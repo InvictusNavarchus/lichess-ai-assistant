@@ -134,11 +134,79 @@
             padding: 15px;
             font-size: 14px;
         }
+
+        /* Ensure AI Coach panel stays visible even when marked as empty */
+        #ai-coach-field.empty {
+            display: block !important;
+            visibility: visible !important;
+        }
+
+        #ai-coach-field.empty .ai-coach-content {
+            display: block !important;
+            visibility: visible !important;
+        }
     `);
 
     // --- UI ELEMENTS ---
     let aiButton;
     let aiCoachPanel;
+    let mutationObserver;
+
+    /**
+     * Sets up a MutationObserver to prevent the AI Coach panel from being hidden
+     * when Lichess adds the 'empty' class due to WikiBook changes.
+     */
+    function setupMutationObserver() {
+        console.log(getPrefix('event', 'Setting up MutationObserver for AI Coach panel'));
+        
+        const targetNode = document.querySelector('.analyse__side');
+        if (!targetNode) {
+            console.log(getPrefix('error', 'Could not find sidebar for MutationObserver'));
+            return;
+        }
+
+        const config = { 
+            childList: true, 
+            subtree: true, 
+            attributes: true, 
+            attributeFilter: ['class'] 
+        };
+
+        mutationObserver = new MutationObserver((mutationsList) => {
+            for (const mutation of mutationsList) {
+                // Check if the AI Coach panel's classes were modified
+                if (mutation.type === 'attributes' && 
+                    mutation.attributeName === 'class' && 
+                    mutation.target.id === 'ai-coach-field') {
+                    
+                    const aiCoachField = mutation.target;
+                    const classes = aiCoachField.classList;
+                    
+                    // If the 'empty' class was added, remove it to keep the panel visible
+                    if (classes.contains('empty')) {
+                        console.log(getPrefix('event', 'Detected empty class added to AI Coach panel, removing it'));
+                        classes.remove('empty');
+                    }
+                }
+                
+                // Also watch for the panel being removed and re-inject it if necessary
+                if (mutation.type === 'childList') {
+                    const aiCoachExists = document.getElementById('ai-coach-field');
+                    if (!aiCoachExists && aiCoachPanel) {
+                        console.log(getPrefix('event', 'AI Coach panel was removed, re-injecting'));
+                        const sidebar = document.querySelector('.analyse__side');
+                        if (sidebar) {
+                            sidebar.appendChild(aiCoachPanel);
+                            console.log(getPrefix('success', 'AI Coach panel re-injected successfully'));
+                        }
+                    }
+                }
+            }
+        });
+
+        mutationObserver.observe(targetNode, config);
+        console.log(getPrefix('success', 'MutationObserver setup completed'));
+    }
 
     /**
      * Creates and injects the "Ask AI" button and the AI Coach sidebar panel into the DOM.
@@ -187,6 +255,9 @@
         if (sidebar) {
             sidebar.appendChild(aiCoachPanel);
             console.log(getPrefix('success', 'AI Coach panel successfully injected'));
+            
+            // Setup MutationObserver after the panel is injected
+            setupMutationObserver();
         } else {
             console.log(getPrefix('error', 'Could not find sidebar to inject AI Coach panel'));
         }
@@ -418,6 +489,15 @@
         });
         
         console.log(getPrefix('success', 'Lichess AI Assistant initialization completed'));
+    });
+
+    // Cleanup when page unloads
+    window.addEventListener('beforeunload', () => {
+        console.log(getPrefix('init', 'Cleaning up before page unload'));
+        if (mutationObserver) {
+            mutationObserver.disconnect();
+            console.log(getPrefix('success', 'MutationObserver disconnected'));
+        }
     });
 
 })();
