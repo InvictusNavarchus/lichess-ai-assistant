@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess AI Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.1.0
+// @version      0.2.0
 // @description  AI-powered assistant that explain stockfish's evaluation and suggestions in simple terms. 
 // @author       Invictus Navarchus
 // @match        https://lichess.org/analysis*
