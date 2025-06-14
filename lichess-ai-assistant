@@ -209,23 +209,52 @@
      * @returns {string} The formatted prompt.
      */
     function buildPrompt(data) {
-        return `
-I am a beginner chess player seeking help. Here is the current game state:
+        const isGoodMove = data.feedback === 'Good move';
+        
+        let promptSections = [
+            `I am a beginner chess player seeking help. Here is the current game state:`,
+            ``,
+            `**FEN:** ${data.fen}`,
+            `**PGN:** ${data.pgn}`,
+            ``,
+            `**My Last Move's Analysis:**`,
+            `**Feedback:** ${data.feedback}`,
+            `**Stockfish Comment:** ${data.comment}`,
+            ``,
+            `Please explain in simple, easy-to-understand terms for a beginner:`
+        ];
 
-**FEN:** ${data.fen}
-**PGN:** ${data.pgn}
+        if (isGoodMove) {
+            // Handle "Good Move" evaluation specially
+            promptSections.push(`1. Why was my last move considered a "Good move"? What made it a solid choice?`);
+            
+            if (data.comment && data.comment.includes('Another was ')) {
+                // There's an alternative move suggestion
+                const alternativeMove = data.comment.replace('Good move. Another was ', '').replace('Another was ', '');
+                promptSections.push(`2. The analysis mentions "Another was ${alternativeMove}". Why is this alternative move also good? What are the differences between my move and this alternative?`);
+            } else {
+                // No alternative move mentioned
+                promptSections.push(`2. What key principles or ideas did my move follow that made it effective?`);
+            }
+            
+            promptSections.push(`3. Based on the current position, what is a simple, general plan or strategy I should be trying to follow over the next few moves?`);
+        } else {
+            // Handle other move evaluations (mistakes, blunders, etc.)
+            promptSections.push(`1. Why was my last move considered a "${data.feedback}"? What tactical or positional weaknesses did it create?`);
+            
+            if (data.comment && (data.comment.includes('Best was ') || data.comment.includes('Better was '))) {
+                const suggestedMove = data.comment.replace('Best was ', '').replace('Better was ', '');
+                promptSections.push(`2. Why is the suggested move "${suggestedMove}" considered better? What is the idea or plan behind it?`);
+            } else {
+                promptSections.push(`2. What would have been a better approach in this position?`);
+            }
+            
+            promptSections.push(`3. Based on the current position, what is a simple, general plan or strategy I should be trying to follow over the next few moves?`);
+        }
 
-**My Last Move's Analysis:**
-**Feedback:** ${data.feedback}
-**Stockfish Suggestion:** ${data.comment}
+        promptSections.push(``, `Focus on fundamental concepts and avoid overly complex variations.`);
 
-Please explain in simple, easy-to-understand terms for a beginner:
-1.  Why was my last move considered a "${data.feedback}"? What tactical or positional weaknesses did it create?
-2.  Why is the suggested move, "${data.comment.replace('Best was ', '')}", considered the best move? What is the idea or plan behind it?
-3.  Based on the current position, what is a simple, general plan or strategy I should be trying to follow over the next few moves?
-
-Focus on fundamental concepts and avoid overly complex variations.
-        `.trim();
+        return promptSections.join('\n').trim();
     }
 
     /**
