@@ -114,6 +114,16 @@
             border-radius: 8px;
         }
 
+        .ai-chat-message.system {
+            background-color: #fff3e0;
+            margin: 10px 20px;
+            text-align: center;
+            font-style: italic;
+            font-size: 13px;
+            color: #e65100;
+            border: 1px solid #ffcc02;
+        }
+
         .ai-chat-message.user {
             background-color: #e3f2fd;
             margin-left: 20px;
@@ -315,11 +325,18 @@
         }
         
         messagesContainer.innerHTML = conversationHistory.map(msg => {
-            const messageClass = msg.role === 'user' ? 'user' : 'ai';
+            let messageClass = msg.role;
+            if (msg.role === 'system') {
+                messageClass = 'system';
+            } else {
+                messageClass = msg.role === 'user' ? 'user' : 'ai';
+            }
+            
             let content = msg.content;
             
-            // Escape HTML in user messages to prevent XSS
+            // Handle different message types
             if (msg.role === 'user') {
+                // Escape HTML in user messages to prevent XSS
                 content = content
                     .replace(/&/g, '&amp;')
                     .replace(/</g, '&lt;')
@@ -327,18 +344,57 @@
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#39;')
                     .replace(/\n/g, '<br>'); // Convert newlines to <br>
-            } else {
+            } else if (msg.role === 'ai') {
                 // Convert markdown to HTML for AI messages
                 content = content
                     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
                     .replace(/\n/g, '<br>'); // Newlines
             }
+            // System messages use content as-is
             
             return `<div class="ai-chat-message ${messageClass}">${content}</div>`;
         }).join('');
         
         // Scroll to bottom
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    /**
+     * Builds a comprehensive system prompt with current chess context.
+     * @returns {string} The system prompt with chess position data
+     */
+    function buildSystemPrompt() {
+        console.log(getPrefix('data', 'Building system prompt with chess context'));
+        
+        const chessData = extractChessData();
+        if (!chessData) {
+            console.log(getPrefix('warning', 'No chess data available for system prompt'));
+            return "You are an AI chess coach. Help the user improve their chess skills with clear, beginner-friendly explanations.";
+        }
+        
+        return `You are an AI chess coach helping a beginner chess player. Here is the current game context:
+
+**CURRENT POSITION DATA:**
+- FEN: ${chessData.fen}
+- Player Side: ${chessData.playerSide}
+- Last Move Evaluation: ${chessData.feedback}
+- Stockfish Analysis: ${chessData.comment}
+
+**GAME HISTORY (PGN):**
+${chessData.pgn}
+
+**YOUR ROLE:**
+You are a patient, knowledgeable chess coach. Provide clear, educational responses that help beginners understand chess concepts. When analyzing positions or moves:
+
+1. Use simple, easy-to-understand language
+2. Explain the "why" behind chess principles
+3. Focus on fundamental concepts over complex variations
+4. When discussing tactics, explain the underlying patterns
+5. For strategic concepts, relate them to the current position
+6. If asked about alternatives, explain the trade-offs in beginner-friendly terms
+7. Always consider the player's side (${chessData.playerSide}) when giving advice
+
+**IMPORTANT:** Base your analysis on the current position (FEN: ${chessData.fen}) and maintain context throughout our conversation. The user can ask follow-up questions, request clarifications, or discuss general chess topics.`;
     }
 
     /**
@@ -361,13 +417,19 @@
         });
         updateChatUI();
         
-        // Build context from conversation history
-        const contextMessages = conversationHistory
-            .filter(msg => msg.role === 'user' || (msg.role === 'ai' && !msg.id))
-            .map(msg => `${msg.role === 'user' ? 'User' : 'AI'}: ${msg.content}`)
+        // Build comprehensive prompt with system context and conversation history
+        const systemPrompt = buildSystemPrompt();
+        const conversationContext = conversationHistory
+            .filter(msg => (msg.role === 'user' || msg.role === 'ai') && !msg.id) // Exclude system messages and loading messages
+            .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
             .join('\n\n');
         
-        const fullPrompt = contextMessages + '\n\nUser: ' + message;
+        let fullPrompt;
+        if (conversationContext.length > 0) {
+            fullPrompt = `${systemPrompt}\n\n**CONVERSATION HISTORY:**\n${conversationContext}\n\nUser: ${message}`;
+        } else {
+            fullPrompt = `${systemPrompt}\n\nUser: ${message}`;
+        }
         
         const encodedPrompt = encodeURIComponent(fullPrompt);
         const baseEndpoint = 'https://api.zpi.my.id/v1/ai/copilot';
@@ -423,6 +485,37 @@
                 if (sendButton) sendButton.disabled = false;
             }
         });
+    }
+
+    // --- CHESS CONTEXT MANAGEMENT ---
+    let currentFEN = null;
+
+    /**
+     * Checks if the chess position has changed and updates context if needed.
+     * @returns {boolean} True if position changed, false otherwise
+     */
+    function hasPositionChanged() {
+        const chessData = extractChessData();
+        if (!chessData) return false;
+        
+        const hasChanged = currentFEN !== chessData.fen;
+        if (hasChanged) {
+            console.log(getPrefix('chess', 'Position change detected'));
+            currentFEN = chessData.fen;
+        }
+        return hasChanged;
+    }
+
+    /**
+     * Updates the chat interface when position changes to inform user.
+     */
+    function handlePositionChange() {
+        if (hasPositionChanged() && conversationHistory.length > 0) {
+            console.log(getPrefix('chess', 'Updating chat for position change'));
+            
+            // Add a system message about position change
+            addMessageToHistory('🔄 Position updated! The AI now has context for the new position.', 'system');
+        }
     }
 
     /**
@@ -758,7 +851,7 @@
 
     /**
      * Main handler function for the "Ask AI about Position" shortcut button.
-     * This populates the chat input with the current position analysis prompt.
+     * This sends a position analysis request to the chat interface.
      */
     function handleAskAIShortcut() {
         console.log(getPrefix('event', 'Ask AI shortcut button clicked or spacebar pressed'));
@@ -779,22 +872,19 @@
             console.log(getPrefix('info', 'AI Coach panel already expanded'));
         }
 
-        // Build the prompt and send it as a chat message
-        const prompt = buildPrompt(chessData);
+        // Create a focused question about the current position
+        const isGoodMove = chessData.feedback === 'Good move';
+        let positionQuestion;
         
-        // Get the chat input and populate it
-        const chatInput = document.getElementById('ai-chat-input');
-        if (chatInput) {
-            chatInput.value = prompt;
-            chatInput.focus();
-            
-            // Automatically send the message
-            setTimeout(() => {
-                handleSendMessage();
-            }, 100);
+        if (isGoodMove) {
+            positionQuestion = `Please analyze my last move (${chessData.feedback}). Why was it considered good? What are the key ideas behind this move, and what should my general plan be going forward?`;
         } else {
-            console.log(getPrefix('error', 'Could not find chat input field'));
+            positionQuestion = `Please analyze my last move (${chessData.feedback}). What went wrong with this move? What would have been better, and what should I focus on in this position?`;
         }
+        
+        // Send the position analysis question directly to the chat
+        console.log(getPrefix('api', 'Sending position analysis question to chat'));
+        sendMessageToAI(positionQuestion);
     }
 
     // --- INITIALIZATION ---
@@ -820,6 +910,12 @@
                 handleAskAIShortcut();
             }
         });
+
+        // Monitor position changes
+        console.log(getPrefix('chess', 'Setting up position monitoring'));
+        setInterval(() => {
+            handlePositionChange();
+        }, 2000); // Check every 2 seconds
         
         console.log(getPrefix('success', 'Lichess AI Assistant initialization completed'));
     });
