@@ -13,7 +13,7 @@
     'use strict';
 
     // --- STYLES ---
-    // Injects all the necessary CSS for the button and modal into the page.
+    // Injects all the necessary CSS for the button and sidebar panel into the page.
     GM_addStyle(`
         :root {
             --ai-helper-blue: #007bff;
@@ -51,67 +51,46 @@
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
         }
 
-        .ai-modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.6);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1001;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.3s, visibility 0.3s;
+        /* AI Coach sidebar panel - styled to match WikiBook */
+        #ai-coach-field {
+            margin-top: 1rem;
         }
 
-        .ai-modal-overlay.visible {
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .ai-modal-content {
-            background-color: var(--ai-helper-white);
-            padding: 25px;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 600px;
-            max-height: 80vh;
-            overflow-y: auto;
-            box-shadow: var(--ai-helper-shadow);
-            transform: scale(0.9);
-            transition: transform 0.3s;
-        }
-
-        .ai-modal-overlay.visible .ai-modal-content {
-            transform: scale(1);
-        }
-
-        .ai-modal-content h2 {
-            margin-top: 0;
-            color: var(--ai-helper-blue-dark);
-            font-size: 24px;
-            border-bottom: 2px solid var(--ai-helper-gray);
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
-
-        .ai-modal-content p {
+        .ai-coach-content {
+            padding: 15px;
             line-height: 1.6;
+            font-size: 14px;
+        }
+
+        .ai-coach-content h3 {
+            margin: 0 0 10px 0;
             font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .ai-coach-content p {
+            margin: 0 0 12px 0;
+        }
+
+        .ai-coach-content strong {
+            font-weight: 600;
         }
 
         /* Loading Spinner */
-        .loader {
-            width: 50px;
-            height: 50px;
-            border: 5px solid var(--ai-helper-gray);
+        .ai-loader {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .ai-loader .spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid #f3f3f3;
             border-bottom-color: var(--ai-helper-blue);
             border-radius: 50%;
-            display: inline-block;
-            box-sizing: border-box;
             animation: rotation 1s linear infinite;
         }
 
@@ -119,14 +98,20 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        .ai-error {
+            color: #d32f2f;
+            padding: 15px;
+            font-size: 14px;
+        }
     `);
 
     // --- UI ELEMENTS ---
     let aiButton;
-    let modalOverlay;
+    let aiCoachPanel;
 
     /**
-     * Creates and injects the "Ask AI" button and the response modal into the DOM.
+     * Creates and injects the "Ask AI" button and the AI Coach sidebar panel into the DOM.
      */
     function setupUI() {
         // Create the "Ask AI" button
@@ -141,30 +126,32 @@
         `;
         aiButton.onclick = handleAskAI;
 
-        // Create the modal for displaying AI responses
-        modalOverlay = document.createElement('div');
-        modalOverlay.className = 'ai-modal-overlay';
-        modalOverlay.innerHTML = `
-            <div class="ai-modal-content">
-                <h2>AI Chess Coach</h2>
-                <div id="ai-response-container"></div>
+        // Create the AI Coach sidebar panel (similar to WikiBook)
+        aiCoachPanel = document.createElement('fieldset');
+        aiCoachPanel.className = 'analyse__wiki toggle-box toggle-box--toggle toggle-box--ready';
+        aiCoachPanel.id = 'ai-coach-field';
+        aiCoachPanel.innerHTML = `
+            <legend tabindex="0">AI Chess Coach</legend>
+            <div class="ai-coach-content" id="ai-coach-content">
+                <p>Click "Ask AI for Help" to get personalized analysis and guidance for your current position.</p>
             </div>
         `;
-        // Close modal when clicking the overlay
-        modalOverlay.onclick = (e) => {
-            if (e.target === modalOverlay) {
-                modalOverlay.classList.remove('visible');
-            }
-        };
 
-        // Append elements to the page
+        // Append button to controls
         const controlsContainer = document.querySelector('.analyse__controls .features');
         if (controlsContainer) {
             controlsContainer.appendChild(aiButton);
         } else {
             console.error("AI Helper: Could not find controls container to inject button.");
         }
-        document.body.appendChild(modalOverlay);
+
+        // Append AI Coach panel to sidebar (after WikiBook)
+        const sidebar = document.querySelector('.analyse__side');
+        if (sidebar) {
+            sidebar.appendChild(aiCoachPanel);
+        } else {
+            console.error("AI Helper: Could not find sidebar to inject AI Coach panel.");
+        }
     }
 
     /**
@@ -262,8 +249,8 @@
      * @param {string} prompt - The prompt to send to the AI.
      */
     async function fetchAIResponse(prompt) {
-        const responseContainer = document.getElementById('ai-response-container');
-        responseContainer.innerHTML = '<div class="loader"></div>'; // Show loader
+        const responseContainer = document.getElementById('ai-coach-content');
+        responseContainer.innerHTML = '<div class="ai-loader"><div class="spinner"></div></div>'; // Show loader
 
         const encodedPrompt = encodeURIComponent(prompt);
         const baseEndpoint = 'https://api.zpi.my.id/v1/ai/copilot';
@@ -282,19 +269,19 @@
                             let htmlContent = data.response.content
                                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
                                 .replace(/\n/g, '<br>'); // Newlines
-                            responseContainer.innerHTML = `<p>${htmlContent}</p>`;
+                            responseContainer.innerHTML = `${htmlContent}`;
                         } else {
                             throw new Error('Unexpected API response format');
                         }
                     } catch (error) {
-                         responseContainer.innerHTML = `<p>Error parsing AI response: ${error.message}</p>`;
+                         responseContainer.innerHTML = `<div class="ai-error">Error parsing AI response: ${error.message}</div>`;
                     }
                 } else {
-                    responseContainer.innerHTML = `<p>Error fetching AI response. Status: ${response.status}</p>`;
+                    responseContainer.innerHTML = `<div class="ai-error">Error fetching AI response. Status: ${response.status}</div>`;
                 }
             },
             onerror: function(error) {
-                 responseContainer.innerHTML = `<p>An error occurred: ${error.statusText || 'Network error'}</p>`;
+                 responseContainer.innerHTML = `<div class="ai-error">An error occurred: ${error.statusText || 'Network error'}</div>`;
             }
         });
     }
@@ -306,7 +293,11 @@
         const chessData = extractChessData();
         if (!chessData) return;
 
-        modalOverlay.classList.add('visible');
+        // Ensure the AI Coach panel is expanded
+        const aiCoachField = document.getElementById('ai-coach-field');
+        if (aiCoachField && !aiCoachField.classList.contains('toggle-box--expanded')) {
+            aiCoachField.querySelector('legend').click();
+        }
 
         const prompt = buildPrompt(chessData);
         fetchAIResponse(prompt);
@@ -322,14 +313,9 @@
             const activeEl = document.activeElement;
             const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
 
-            if (event.code === 'Space' && !isTyping && !modalOverlay.classList.contains('visible')) {
+            if (event.code === 'Space' && !isTyping) {
                 event.preventDefault(); // Prevent default spacebar action (e.g., scrolling)
                 handleAskAI();
-            }
-
-            // Add escape key to close modal
-            if (event.key === 'Escape' && modalOverlay.classList.contains('visible')) {
-                modalOverlay.classList.remove('visible');
             }
         });
     });
