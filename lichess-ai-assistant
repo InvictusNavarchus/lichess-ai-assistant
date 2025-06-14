@@ -1,0 +1,308 @@
+// ==UserScript==
+// @name         Lichess AI Chess Helper
+// @namespace    http://tampermonkey.net/
+// @version      1.0
+// @description  Extracts chess game state (FEN, PGN, Stockfish feedback) and sends it to an AI for guidance.
+// @author       You
+// @match        https://lichess.org/analysis*
+// @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // --- STYLES ---
+    // Injects all the necessary CSS for the button and modal into the page.
+    GM_addStyle(`
+        :root {
+            --ai-helper-blue: #007bff;
+            --ai-helper-blue-dark: #0056b3;
+            --ai-helper-gray: #f0f0f0;
+            --ai-helper-white: #ffffff;
+            --ai-helper-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .ai-helper-button {
+            background: linear-gradient(145deg, var(--ai-helper-blue), var(--ai-helper-blue-dark));
+            color: var(--ai-helper-white);
+            border: none;
+            padding: 0 15px;
+            height: 36px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-left: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+        }
+
+        .ai-helper-button:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--ai-helper-shadow);
+        }
+
+        .ai-helper-button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+        }
+
+        .ai-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1001;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+        }
+
+        .ai-modal-overlay.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .ai-modal-content {
+            background-color: var(--ai-helper-white);
+            padding: 25px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: var(--ai-helper-shadow);
+            transform: scale(0.9);
+            transition: transform 0.3s;
+        }
+
+        .ai-modal-overlay.visible .ai-modal-content {
+            transform: scale(1);
+        }
+
+        .ai-modal-content h2 {
+            margin-top: 0;
+            color: var(--ai-helper-blue-dark);
+            font-size: 24px;
+            border-bottom: 2px solid var(--ai-helper-gray);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .ai-modal-content p {
+            line-height: 1.6;
+            font-size: 16px;
+        }
+
+        /* Loading Spinner */
+        .loader {
+            width: 50px;
+            height: 50px;
+            border: 5px solid var(--ai-helper-gray);
+            border-bottom-color: var(--ai-helper-blue);
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    `);
+
+    // --- UI ELEMENTS ---
+    let aiButton;
+    let modalOverlay;
+
+    /**
+     * Creates and injects the "Ask AI" button and the response modal into the DOM.
+     */
+    function setupUI() {
+        // Create the "Ask AI" button
+        aiButton = document.createElement('button');
+        aiButton.className = 'ai-helper-button';
+        aiButton.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M6 12.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5M4.5 9.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m2-3a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5m-2-3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5"/>
+                <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2z"/>
+            </svg>
+            <span>Ask AI for Help</span>
+        `;
+        aiButton.onclick = handleAskAI;
+
+        // Create the modal for displaying AI responses
+        modalOverlay = document.createElement('div');
+        modalOverlay.className = 'ai-modal-overlay';
+        modalOverlay.innerHTML = `
+            <div class="ai-modal-content">
+                <h2>AI Chess Coach</h2>
+                <div id="ai-response-container"></div>
+            </div>
+        `;
+        // Close modal when clicking the overlay
+        modalOverlay.onclick = (e) => {
+            if (e.target === modalOverlay) {
+                modalOverlay.classList.remove('visible');
+            }
+        };
+
+        // Append elements to the page
+        const controlsContainer = document.querySelector('.analyse__controls .features');
+        if (controlsContainer) {
+            controlsContainer.appendChild(aiButton);
+        } else {
+            console.error("AI Helper: Could not find controls container to inject button.");
+        }
+        document.body.appendChild(modalOverlay);
+    }
+
+    /**
+     * Extracts all relevant chess data from the page.
+     * @returns {object|null} An object with fen, pgn, feedback, and comment, or null if data is missing.
+     */
+    function extractChessData() {
+        const fenInput = document.querySelector('.copyables .pair input.copyable');
+        const pgnTextarea = document.querySelector('.copyables .pgn textarea.copyable');
+        const commentEl = document.querySelector('.practice-box .comment');
+
+        if (!fenInput || !pgnTextarea) {
+            alert("AI Helper: Could not find FEN or PGN data on the page.");
+            return null;
+        }
+
+        let feedback = 'N/A';
+        let commentText = 'N/A';
+
+        if (commentEl) {
+            const verdictEl = commentEl.querySelector('.verdict');
+            if (verdictEl) {
+                feedback = verdictEl.textContent.trim();
+                // To get only the suggestion text, we clone the element and remove the verdict part.
+                const commentClone = commentEl.cloneNode(true);
+                commentClone.querySelector('.verdict').remove();
+                commentText = commentClone.textContent.trim();
+            }
+        }
+
+        return {
+            fen: fenInput.value,
+            pgn: pgnTextarea.value,
+            feedback,
+            comment: commentText,
+        };
+    }
+
+    /**
+     * Constructs a detailed, beginner-focused prompt for the AI.
+     * @param {object} data - The extracted chess data.
+     * @returns {string} The formatted prompt.
+     */
+    function buildPrompt(data) {
+        return `
+I am a beginner chess player seeking help. Here is the current game state:
+
+**FEN:** ${data.fen}
+**PGN:** ${data.pgn}
+
+**My Last Move's Analysis:**
+**Feedback:** ${data.feedback}
+**Stockfish Suggestion:** ${data.comment}
+
+Please explain in simple, easy-to-understand terms for a beginner:
+1.  Why was my last move considered a "${data.feedback}"? What tactical or positional weaknesses did it create?
+2.  Why is the suggested move, "${data.comment.replace('Best was ', '')}", considered the best move? What is the idea or plan behind it?
+3.  Based on the current position, what is a simple, general plan or strategy I should be trying to follow over the next few moves?
+
+Focus on fundamental concepts and avoid overly complex variations.
+        `.trim();
+    }
+
+    /**
+     * Fetches the AI response from the API.
+     * @param {string} prompt - The prompt to send to the AI.
+     */
+    async function fetchAIResponse(prompt) {
+        const responseContainer = document.getElementById('ai-response-container');
+        responseContainer.innerHTML = '<div class="loader"></div>'; // Show loader
+
+        const encodedPrompt = encodeURIComponent(prompt);
+        const baseEndpoint = 'https://api.zpi.my.id/v1/ai/copilot';
+        const fullUrl = `${baseEndpoint}?text=${encodedPrompt}`;
+        const proxiedUrl = `https://cors.fadel.web.id/${fullUrl}`;
+
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: proxiedUrl,
+            onload: function(response) {
+                if (response.status >= 200 && response.status < 300) {
+                    try {
+                        const data = JSON.parse(response.responseText);
+                        if (data.code === 200 && data.response && data.response.content) {
+                            // Basic markdown to HTML conversion
+                            let htmlContent = data.response.content
+                                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+                                .replace(/\n/g, '<br>'); // Newlines
+                            responseContainer.innerHTML = `<p>${htmlContent}</p>`;
+                        } else {
+                            throw new Error('Unexpected API response format');
+                        }
+                    } catch (error) {
+                         responseContainer.innerHTML = `<p>Error parsing AI response: ${error.message}</p>`;
+                    }
+                } else {
+                    responseContainer.innerHTML = `<p>Error fetching AI response. Status: ${response.status}</p>`;
+                }
+            },
+            onerror: function(error) {
+                 responseContainer.innerHTML = `<p>An error occurred: ${error.statusText || 'Network error'}</p>`;
+            }
+        });
+    }
+
+    /**
+     * Main handler function to trigger the AI help process.
+     */
+    function handleAskAI() {
+        const chessData = extractChessData();
+        if (!chessData) return;
+
+        modalOverlay.classList.add('visible');
+
+        const prompt = buildPrompt(chessData);
+        fetchAIResponse(prompt);
+    }
+
+    // --- INITIALIZATION ---
+    window.addEventListener('load', () => {
+        // Wait a bit for the dynamic page content to be fully loaded
+        setTimeout(setupUI, 500);
+
+        // Add spacebar shortcut
+        document.addEventListener('keydown', (event) => {
+            const activeEl = document.activeElement;
+            const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
+
+            if (event.code === 'Space' && !isTyping && !modalOverlay.classList.contains('visible')) {
+                event.preventDefault(); // Prevent default spacebar action (e.g., scrolling)
+                handleAskAI();
+            }
+
+            // Add escape key to close modal
+            if (event.key === 'Escape' && modalOverlay.classList.contains('visible')) {
+                modalOverlay.classList.remove('visible');
+            }
+        });
+    });
+
+})();
