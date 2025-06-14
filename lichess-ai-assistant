@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Lichess AI Chess Helper
+// @name         Lichess AI Assistant
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Extracts chess game state (FEN, PGN, Stockfish feedback) and sends it to an AI for guidance.
-// @author       You
+// @version      0.1.0
+// @description  AI-powered assistant that explain stockfish's evaluation and suggestions in simple terms. 
+// @author       Invictus Navarchus
 // @match        https://lichess.org/analysis*
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
