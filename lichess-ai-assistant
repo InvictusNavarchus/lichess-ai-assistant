@@ -364,18 +364,18 @@
 
         if (isGoodMove) {
             console.log(getPrefix('data', 'Building prompt for good move scenario'));
-            // Handle "Good Move" evaluation specially
-            promptSections.push(`1. Why was my last move considered a "Good move"? What made it a solid choice?`);
+            // Handle "Good Move" evaluation specially with critical analysis
+            promptSections.push(`1. Why was my last move considered a "Good move"? What made it a solid choice? If this move involves trading pieces or making what might seem like a sacrifice, explain exactly why this trade/sacrifice is beneficial and whether it's truly the best move available in this position.`);
             
             if (data.comment && data.comment.includes('Another was ')) {
                 console.log(getPrefix('data', 'Found alternative move suggestion'));
                 // There's an alternative move suggestion
                 const alternativeMove = data.comment.replace('Good move. Another was ', '').replace('Another was ', '');
-                promptSections.push(`2. The analysis mentions "Another was ${alternativeMove}". Why is this alternative move also good? What are the differences between my move and this alternative?`);
+                promptSections.push(`2. The analysis mentions "Another was ${alternativeMove}". Why is this alternative move also good? What are the differences between my move and this alternative? If my move seems counterintuitive compared to the alternative (e.g., trading valuable pieces), explain which move would be better for a beginner and why.`);
             } else {
                 console.log(getPrefix('data', 'No alternative move found, using general principles'));
                 // No alternative move mentioned
-                promptSections.push(`2. What key principles or ideas did my move follow that made it effective?`);
+                promptSections.push(`2. What key principles or ideas did my move follow that made it effective? If this move seems counterintuitive to basic chess principles (like trading a more valuable piece for a less valuable one), explain the deeper strategic reason and whether a beginner should prioritize this type of move.`);
             }
             
             promptSections.push(`3. Based on the current position, what is a simple, general plan or strategy I should be trying to follow over the next few moves?`);
@@ -396,7 +396,7 @@
             promptSections.push(`3. Based on the current position, what is a simple, general plan or strategy I should be trying to follow over the next few moves?`);
         }
 
-        promptSections.push(``, `Focus on fundamental concepts and avoid overly complex variations. Provide a direct, instructional response without conversational openings, closings, or questions. Do not use phrases like "Great question!" or "Want to dive deeper?" - just provide clear, educational explanations.`);
+        promptSections.push(``, `Focus on fundamental concepts and avoid overly complex variations. When evaluating "Good move" assessments, be especially critical - if a move seems counterintuitive to basic chess principles (like material trades that don't make obvious sense), explain the deeper reasoning and whether it's truly optimal for a beginner's development. Provide a direct, instructional response without conversational openings, closings, or questions. Do not use phrases like "Great question!" or "Want to dive deeper?" - just provide clear, educational explanations.`);
 
 
         const finalPrompt = promptSections.join('\n').trim();
