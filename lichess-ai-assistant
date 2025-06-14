@@ -2,7 +2,7 @@
 // @name         Lichess AI Assistant
 // @namespace    http://tampermonkey.net/
 // @version      0.2.0
-// @description  AI-powered assistant that explain stockfish's evaluation and suggestions in simple terms. 
+// @description  AI-powered chess coach with interactive chat interface. Analyze positions, ask follow-up questions, and get personalized guidance in real-time. 
 // @author       Invictus Navarchus
 // @match        https://lichess.org/analysis*
 // @grant        GM_addStyle
@@ -81,35 +81,157 @@
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
         }
 
-        /* AI Coach sidebar panel - styled to match WikiBook */
+        /* AI Chat interface - styled to match WikiBook */
         #ai-coach-field {
             margin-top: 1rem;
-            min-height: 400px;
+            min-height: 500px;
             max-height: none;
             flex-grow: 1;
+            display: flex;
+            flex-direction: column;
         }
 
-        .ai-coach-content {
+        .ai-chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            min-height: 450px;
+        }
+
+        .ai-chat-messages {
+            flex: 1;
             padding: 15px;
-            line-height: 1.6;
-            font-size: 14px;
-            min-height: 350px;
             overflow-y: auto;
+            max-height: 400px;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 14px;
+            line-height: 1.6;
         }
 
-        .ai-coach-content h3 {
-            margin: 0 0 10px 0;
-            font-size: 16px;
+        .ai-chat-message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .ai-chat-message.user {
+            background-color: #e3f2fd;
+            margin-left: 20px;
+            position: relative;
+        }
+
+        .ai-chat-message.user::before {
+            content: "You";
+            position: absolute;
+            top: -5px;
+            right: 10px;
+            font-size: 12px;
             font-weight: 600;
-            color: #333;
+            color: #1976d2;
         }
 
-        .ai-coach-content p {
-            margin: 0 0 12px 0;
+        .ai-chat-message.ai {
+            background-color: #f5f5f5;
+            margin-right: 20px;
+            position: relative;
         }
 
-        .ai-coach-content strong {
+        .ai-chat-message.ai::before {
+            content: "AI Coach";
+            position: absolute;
+            top: -5px;
+            left: 10px;
+            font-size: 12px;
             font-weight: 600;
+            color: #666;
+        }
+
+        .ai-chat-message p {
+            margin: 0 0 8px 0;
+        }
+
+        .ai-chat-message strong {
+            font-weight: 600;
+        }
+
+        .ai-chat-input-container {
+            padding: 15px;
+            border-top: 1px solid #e0e0e0;
+            background-color: #fafafa;
+        }
+
+        .ai-chat-input-row {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .ai-chat-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 40px;
+            max-height: 120px;
+            font-family: inherit;
+        }
+
+        .ai-chat-input:focus {
+            outline: none;
+            border-color: var(--ai-helper-blue);
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+        }
+
+        .ai-chat-send-btn {
+            background: var(--ai-helper-blue);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            min-width: 60px;
+            transition: background-color 0.2s;
+        }
+
+        .ai-chat-send-btn:hover {
+            background: var(--ai-helper-blue-dark);
+        }
+
+        .ai-chat-send-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .ai-chat-shortcut-row {
+            margin-top: 8px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .ai-chat-shortcut-btn {
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .ai-chat-shortcut-btn:hover {
+            background: #e0e0e0;
+            border-color: #ccc;
+        }
+
+        .ai-chat-welcome {
+            padding: 20px;
+            text-align: center;
+            color: #666;
+            font-style: italic;
         }
 
         /* Loading Spinner */
@@ -134,10 +256,13 @@
             100% { transform: rotate(360deg); }
         }
 
-        .ai-error {
+        .ai-error, .ai-chat-message.ai.error {
             color: #d32f2f;
             padding: 15px;
             font-size: 14px;
+            background-color: #ffebee;
+            border-radius: 6px;
+            border: 1px solid #ffcdd2;
         }
 
         /* Ensure AI Coach panel stays visible even when marked as empty */
@@ -156,6 +281,149 @@
     let aiButton;
     let aiCoachPanel;
     let mutationObserver;
+    let conversationHistory = []; // Store conversation history
+
+    /**
+     * Adds a message to the conversation history and updates the UI.
+     * @param {string} message - The message content
+     * @param {string} role - Either 'user' or 'ai'
+     */
+    function addMessageToHistory(message, role) {
+        console.log(getPrefix('data', `Adding ${role} message to history`));
+        
+        conversationHistory.push({
+            role: role,
+            content: message,
+            timestamp: new Date()
+        });
+        
+        updateChatUI();
+    }
+
+    /**
+     * Updates the chat UI to display all messages in the conversation history.
+     */
+    function updateChatUI() {
+        console.log(getPrefix('ui', 'Updating chat UI'));
+        
+        const messagesContainer = document.getElementById('ai-chat-messages');
+        if (!messagesContainer) return;
+        
+        if (conversationHistory.length === 0) {
+            messagesContainer.innerHTML = '<div class="ai-chat-welcome">Start a conversation with your AI Chess Coach! Use the "Ask AI" button below or type your own question.</div>';
+            return;
+        }
+        
+        messagesContainer.innerHTML = conversationHistory.map(msg => {
+            const messageClass = msg.role === 'user' ? 'user' : 'ai';
+            let content = msg.content;
+            
+            // Escape HTML in user messages to prevent XSS
+            if (msg.role === 'user') {
+                content = content
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;')
+                    .replace(/\n/g, '<br>'); // Convert newlines to <br>
+            } else {
+                // Convert markdown to HTML for AI messages
+                content = content
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+                    .replace(/\n/g, '<br>'); // Newlines
+            }
+            
+            return `<div class="ai-chat-message ${messageClass}">${content}</div>`;
+        }).join('');
+        
+        // Scroll to bottom
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    /**
+     * Sends a message to the AI and handles the response.
+     * @param {string} message - The message to send
+     */
+    async function sendMessageToAI(message) {
+        console.log(getPrefix('api', 'Sending message to AI'));
+        
+        // Add user message to history
+        addMessageToHistory(message, 'user');
+        
+        // Show loading in AI message
+        const tempLoadingId = 'ai-loading-' + Date.now();
+        conversationHistory.push({
+            role: 'ai',
+            content: '<div class="ai-loader"><div class="spinner"></div></div>',
+            timestamp: new Date(),
+            id: tempLoadingId
+        });
+        updateChatUI();
+        
+        // Build context from conversation history
+        const contextMessages = conversationHistory
+            .filter(msg => msg.role === 'user' || (msg.role === 'ai' && !msg.id))
+            .map(msg => `${msg.role === 'user' ? 'User' : 'AI'}: ${msg.content}`)
+            .join('\n\n');
+        
+        const fullPrompt = contextMessages + '\n\nUser: ' + message;
+        
+        const encodedPrompt = encodeURIComponent(fullPrompt);
+        const baseEndpoint = 'https://api.zpi.my.id/v1/ai/copilot';
+        const fullUrl = `${baseEndpoint}?text=${encodedPrompt}`;
+        const proxiedUrl = `https://cors.fadel.web.id/${fullUrl}`;
+        
+        console.log(getPrefix('api', `Making request with conversation context`));
+
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: proxiedUrl,
+            onload: function(response) {
+                console.log(getPrefix('api', `Response received with status: ${response.status}`));
+                
+                // Remove loading message
+                conversationHistory = conversationHistory.filter(msg => msg.id !== tempLoadingId);
+                
+                if (response.status >= 200 && response.status < 300) {
+                    console.log(getPrefix('success', 'API request successful, parsing response'));
+                    try {
+                        const data = JSON.parse(response.responseText);
+                        console.log(getPrefix('data', `API response code: ${data.code}`));
+                        
+                        if (data.code === 200 && data.response && data.response.content) {
+                            console.log(getPrefix('success', 'AI response received, adding to history'));
+                            addMessageToHistory(data.response.content, 'ai');
+                        } else {
+                            console.log(getPrefix('error', 'Unexpected API response format'));
+                            addMessageToHistory('Error: Unexpected API response format', 'ai');
+                        }
+                    } catch (error) {
+                        console.log(getPrefix('error', `Error parsing response: ${error.message}`));
+                        addMessageToHistory(`Error parsing AI response: ${error.message}`, 'ai');
+                    }
+                } else {
+                    console.log(getPrefix('error', `API request failed with status: ${response.status}`));
+                    addMessageToHistory(`Error fetching AI response. Status: ${response.status}`, 'ai');
+                }
+                
+                // Re-enable send button
+                const sendButton = document.getElementById('ai-chat-send-btn');
+                if (sendButton) sendButton.disabled = false;
+            },
+            onerror: function(error) {
+                console.log(getPrefix('error', `Network error: ${error.statusText || 'Unknown error'}`));
+                
+                // Remove loading message
+                conversationHistory = conversationHistory.filter(msg => msg.id !== tempLoadingId);
+                addMessageToHistory(`Network error: ${error.statusText || 'Unknown error'}`, 'ai');
+                
+                // Re-enable send button
+                const sendButton = document.getElementById('ai-chat-send-btn');
+                if (sendButton) sendButton.disabled = false;
+            }
+        });
+    }
 
     /**
      * Sets up a MutationObserver to prevent the AI Coach panel from being hidden
@@ -230,17 +498,29 @@
             </svg>
             <span>Ask AI</span>
         `;
-        aiButton.onclick = handleAskAI;
+        aiButton.onclick = handleAskAIShortcut;
 
-        // Create the AI Coach sidebar panel (similar to WikiBook)
-        console.log(getPrefix('ui', 'Creating AI Coach panel'));
+        // Create the AI Chat interface (similar to WikiBook)
+        console.log(getPrefix('ui', 'Creating AI Chat interface'));
         aiCoachPanel = document.createElement('fieldset');
         aiCoachPanel.className = 'analyse__wiki toggle-box toggle-box--toggle toggle-box--ready';
         aiCoachPanel.id = 'ai-coach-field';
         aiCoachPanel.innerHTML = `
             <legend tabindex="0">AI Chess Coach</legend>
-            <div class="ai-coach-content" id="ai-coach-content">
-                <p>Click "Ask AI" to get personalized analysis and guidance for your current position.</p>
+            <div class="ai-chat-container">
+                <div class="ai-chat-messages" id="ai-chat-messages">
+                    <div class="ai-chat-welcome">Start a conversation with your AI Chess Coach! Use the "Ask AI" button below or type your own question.</div>
+                </div>
+                <div class="ai-chat-input-container">
+                    <div class="ai-chat-input-row">
+                        <textarea class="ai-chat-input" id="ai-chat-input" placeholder="Ask me anything about this position or chess in general..." rows="2"></textarea>
+                        <button class="ai-chat-send-btn" id="ai-chat-send-btn">Send</button>
+                    </div>
+                    <div class="ai-chat-shortcut-row">
+                        <button class="ai-chat-shortcut-btn" id="ai-ask-position-btn">📋 Ask AI about Position</button>
+                        <button class="ai-chat-shortcut-btn" id="ai-clear-chat-btn">🗑️ Clear Chat</button>
+                    </div>
+                </div>
             </div>
         `;
 
@@ -255,17 +535,89 @@
         }
 
         // Append AI Coach panel to sidebar (after WikiBook)
-        console.log(getPrefix('ui', 'Injecting AI Coach panel to sidebar'));
+        console.log(getPrefix('ui', 'Injecting AI Chat interface to sidebar'));
         const sidebar = document.querySelector('.analyse__side');
         if (sidebar) {
             sidebar.appendChild(aiCoachPanel);
-            console.log(getPrefix('success', 'AI Coach panel successfully injected'));
+            console.log(getPrefix('success', 'AI Chat interface successfully injected'));
+            
+            // Setup event listeners for chat interface
+            setupChatEventListeners();
             
             // Setup MutationObserver after the panel is injected
             setupMutationObserver();
         } else {
-            console.log(getPrefix('error', 'Could not find sidebar to inject AI Coach panel'));
+            console.log(getPrefix('error', 'Could not find sidebar to inject AI Chat interface'));
         }
+    }
+
+    /**
+     * Sets up event listeners for the chat interface.
+     */
+    function setupChatEventListeners() {
+        console.log(getPrefix('event', 'Setting up chat event listeners'));
+        
+        const chatInput = document.getElementById('ai-chat-input');
+        const sendButton = document.getElementById('ai-chat-send-btn');
+        const askPositionButton = document.getElementById('ai-ask-position-btn');
+        const clearChatButton = document.getElementById('ai-clear-chat-btn');
+        
+        // Send button click
+        if (sendButton) {
+            sendButton.addEventListener('click', handleSendMessage);
+        }
+        
+        // Enter key in chat input (Ctrl+Enter or Shift+Enter to send)
+        if (chatInput) {
+            chatInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && (event.ctrlKey || event.shiftKey)) {
+                    event.preventDefault();
+                    handleSendMessage();
+                }
+            });
+        }
+        
+        // Ask about position shortcut button
+        if (askPositionButton) {
+            askPositionButton.addEventListener('click', handleAskAIShortcut);
+        }
+        
+        // Clear chat button
+        if (clearChatButton) {
+            clearChatButton.addEventListener('click', () => {
+                console.log(getPrefix('event', 'Clear chat button clicked'));
+                conversationHistory = [];
+                updateChatUI();
+            });
+        }
+    }
+
+    /**
+     * Handles sending a message from the chat input.
+     */
+    function handleSendMessage() {
+        console.log(getPrefix('event', 'Send message triggered'));
+        
+        const chatInput = document.getElementById('ai-chat-input');
+        const sendButton = document.getElementById('ai-chat-send-btn');
+        
+        if (!chatInput || !sendButton) return;
+        
+        const message = chatInput.value.trim();
+        if (!message) return;
+        
+        // Clear input and disable send button during processing
+        chatInput.value = '';
+        sendButton.disabled = true;
+        
+        // Ensure the AI Coach panel is expanded
+        const aiCoachField = document.getElementById('ai-coach-field');
+        if (aiCoachField && !aiCoachField.classList.contains('toggle-box--expanded')) {
+            console.log(getPrefix('ui', 'Expanding AI Coach panel'));
+            aiCoachField.querySelector('legend').click();
+        }
+        
+        sendMessageToAI(message);
     }
 
     /**
@@ -405,71 +757,11 @@
     }
 
     /**
-     * Fetches the AI response from the API.
-     * @param {string} prompt - The prompt to send to the AI.
+     * Main handler function for the "Ask AI about Position" shortcut button.
+     * This populates the chat input with the current position analysis prompt.
      */
-    async function fetchAIResponse(prompt) {
-        console.log(getPrefix('api', 'Starting AI response fetch'));
-        
-        const responseContainer = document.getElementById('ai-coach-content');
-        console.log(getPrefix('ui', 'Showing loading spinner'));
-        responseContainer.innerHTML = '<div class="ai-loader"><div class="spinner"></div></div>'; // Show loader
-
-        const encodedPrompt = encodeURIComponent(prompt);
-        const baseEndpoint = 'https://api.zpi.my.id/v1/ai/copilot';
-        const fullUrl = `${baseEndpoint}?text=${encodedPrompt}`;
-        const proxiedUrl = `https://cors.fadel.web.id/${fullUrl}`;
-        
-        console.log(getPrefix('api', `Making request to: ${proxiedUrl.substring(0, 100)}...`));
-
-        GM_xmlhttpRequest({
-            method: "GET",
-            url: proxiedUrl,
-            onload: function(response) {
-                console.log(getPrefix('api', `Response received with status: ${response.status}`));
-                
-                if (response.status >= 200 && response.status < 300) {
-                    console.log(getPrefix('success', 'API request successful, parsing response'));
-                    try {
-                        const data = JSON.parse(response.responseText);
-                        console.log(getPrefix('data', `API response code: ${data.code}`));
-                        
-                        if (data.code === 200 && data.response && data.response.content) {
-                            console.log(getPrefix('data', `Content length: ${data.response.content.length} characters`));
-                            console.log(getPrefix('ui', 'Converting markdown to HTML and displaying'));
-                            
-                            // Basic markdown to HTML conversion
-                            let htmlContent = data.response.content
-                                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
-                                .replace(/\n/g, '<br>'); // Newlines
-                            responseContainer.innerHTML = `${htmlContent}`;
-                            
-                            console.log(getPrefix('success', 'AI response successfully displayed'));
-                        } else {
-                            console.log(getPrefix('error', 'Unexpected API response format'));
-                            throw new Error('Unexpected API response format');
-                        }
-                    } catch (error) {
-                        console.log(getPrefix('error', `Error parsing response: ${error.message}`));
-                        responseContainer.innerHTML = `<div class="ai-error">Error parsing AI response: ${error.message}</div>`;
-                    }
-                } else {
-                    console.log(getPrefix('error', `API request failed with status: ${response.status}`));
-                    responseContainer.innerHTML = `<div class="ai-error">Error fetching AI response. Status: ${response.status}</div>`;
-                }
-            },
-            onerror: function(error) {
-                console.log(getPrefix('error', `Network error: ${error.statusText || 'Unknown error'}`));
-                responseContainer.innerHTML = `<div class="ai-error">An error occurred: ${error.statusText || 'Network error'}</div>`;
-            }
-        });
-    }
-
-    /**
-     * Main handler function to trigger the AI help process.
-     */
-    function handleAskAI() {
-        console.log(getPrefix('event', 'Ask AI button clicked or spacebar pressed'));
+    function handleAskAIShortcut() {
+        console.log(getPrefix('event', 'Ask AI shortcut button clicked or spacebar pressed'));
         
         const chessData = extractChessData();
         if (!chessData) {
@@ -487,8 +779,22 @@
             console.log(getPrefix('info', 'AI Coach panel already expanded'));
         }
 
+        // Build the prompt and send it as a chat message
         const prompt = buildPrompt(chessData);
-        fetchAIResponse(prompt);
+        
+        // Get the chat input and populate it
+        const chatInput = document.getElementById('ai-chat-input');
+        if (chatInput) {
+            chatInput.value = prompt;
+            chatInput.focus();
+            
+            // Automatically send the message
+            setTimeout(() => {
+                handleSendMessage();
+            }, 100);
+        } else {
+            console.log(getPrefix('error', 'Could not find chat input field'));
+        }
     }
 
     // --- INITIALIZATION ---
@@ -511,7 +817,7 @@
             if (event.code === 'Space' && !isTyping) {
                 console.log(getPrefix('event', 'Spacebar shortcut triggered'));
                 event.preventDefault(); // Prevent default spacebar action (e.g., scrolling)
-                handleAskAI();
+                handleAskAIShortcut();
             }
         });
         
