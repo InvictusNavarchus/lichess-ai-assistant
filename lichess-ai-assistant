@@ -12,6 +12,36 @@
 (function() {
     'use strict';
 
+    // --- LOGGING HELPER ---
+    /**
+     * Generates a formatted prefix for console logging with timestamp and emoji.
+     * @param {string} level - The log level (info, success, warning, error)
+     * @param {string} action - The action being performed
+     * @returns {string} Formatted prefix with timestamp and emoji
+     */
+    function getPrefix(level = 'info', action = '') {
+        const now = new Date();
+        const timestamp = now.toTimeString().slice(0, 8); // HH:mm:ss format
+        
+        const emojis = {
+            info: 'ℹ️',
+            success: '✅',
+            warning: '⚠️',
+            error: '❌',
+            init: '🚀',
+            ui: '🎨',
+            chess: '♟️',
+            api: '🌐',
+            data: '📊',
+            event: '🎯'
+        };
+        
+        const emoji = emojis[level] || emojis.info;
+        const actionText = action ? ` ${action}` : '';
+        
+        return `[${timestamp}] ${emoji}${actionText}:`;
+    }
+
     // --- STYLES ---
     // Injects all the necessary CSS for the button and sidebar panel into the page.
     GM_addStyle(`
@@ -114,7 +144,10 @@
      * Creates and injects the "Ask AI" button and the AI Coach sidebar panel into the DOM.
      */
     function setupUI() {
+        console.log(getPrefix('init', 'Setting up UI'));
+        
         // Create the "Ask AI" button
+        console.log(getPrefix('ui', 'Creating Ask AI button'));
         aiButton = document.createElement('button');
         aiButton.className = 'ai-helper-button';
         aiButton.innerHTML = `
@@ -127,6 +160,7 @@
         aiButton.onclick = handleAskAI;
 
         // Create the AI Coach sidebar panel (similar to WikiBook)
+        console.log(getPrefix('ui', 'Creating AI Coach panel'));
         aiCoachPanel = document.createElement('fieldset');
         aiCoachPanel.className = 'analyse__wiki toggle-box toggle-box--toggle toggle-box--ready';
         aiCoachPanel.id = 'ai-coach-field';
@@ -138,19 +172,23 @@
         `;
 
         // Append button to controls
+        console.log(getPrefix('ui', 'Injecting button to controls container'));
         const controlsContainer = document.querySelector('.analyse__controls .features');
         if (controlsContainer) {
             controlsContainer.appendChild(aiButton);
+            console.log(getPrefix('success', 'Ask AI button successfully injected'));
         } else {
-            console.error("AI Helper: Could not find controls container to inject button.");
+            console.log(getPrefix('error', 'Could not find controls container to inject button'));
         }
 
         // Append AI Coach panel to sidebar (after WikiBook)
+        console.log(getPrefix('ui', 'Injecting AI Coach panel to sidebar'));
         const sidebar = document.querySelector('.analyse__side');
         if (sidebar) {
             sidebar.appendChild(aiCoachPanel);
+            console.log(getPrefix('success', 'AI Coach panel successfully injected'));
         } else {
-            console.error("AI Helper: Could not find sidebar to inject AI Coach panel.");
+            console.log(getPrefix('error', 'Could not find sidebar to inject AI Coach panel'));
         }
     }
 
@@ -159,35 +197,48 @@
      * @returns {object|null} An object with fen, pgn, feedback, and comment, or null if data is missing.
      */
     function extractChessData() {
+        console.log(getPrefix('chess', 'Extracting chess data from page'));
+        
         const fenInput = document.querySelector('.copyables .pair input.copyable');
         const pgnTextarea = document.querySelector('.copyables .pgn textarea.copyable');
         const commentEl = document.querySelector('.practice-box .comment');
 
         if (!fenInput || !pgnTextarea) {
+            console.log(getPrefix('error', 'Could not find FEN or PGN data on page'));
             alert("AI Helper: Could not find FEN or PGN data on the page.");
             return null;
         }
 
+        console.log(getPrefix('data', 'Found FEN and PGN data'));
+        
         let feedback = 'N/A';
         let commentText = 'N/A';
 
         if (commentEl) {
+            console.log(getPrefix('data', 'Found comment element, extracting feedback'));
             const verdictEl = commentEl.querySelector('.verdict');
             if (verdictEl) {
                 feedback = verdictEl.textContent.trim();
+                console.log(getPrefix('data', `Extracted feedback: ${feedback}`));
                 // To get only the suggestion text, we clone the element and remove the verdict part.
                 const commentClone = commentEl.cloneNode(true);
                 commentClone.querySelector('.verdict').remove();
                 commentText = commentClone.textContent.trim();
+                console.log(getPrefix('data', `Extracted comment: ${commentText.substring(0, 50)}...`));
             }
+        } else {
+            console.log(getPrefix('warning', 'No comment element found'));
         }
 
-        return {
+        const extractedData = {
             fen: fenInput.value,
             pgn: pgnTextarea.value,
             feedback,
             comment: commentText,
         };
+        
+        console.log(getPrefix('success', 'Chess data extraction completed'));
+        return extractedData;
     }
 
     /**
@@ -196,7 +247,10 @@
      * @returns {string} The formatted prompt.
      */
     function buildPrompt(data) {
+        console.log(getPrefix('data', 'Building AI prompt'));
+        
         const isGoodMove = data.feedback === 'Good move';
+        console.log(getPrefix('data', `Move evaluation: ${data.feedback} (isGoodMove: ${isGoodMove})`));
         
         let promptSections = [
             `I am a beginner chess player seeking help. Here is the current game state:`,
@@ -212,27 +266,33 @@
         ];
 
         if (isGoodMove) {
+            console.log(getPrefix('data', 'Building prompt for good move scenario'));
             // Handle "Good Move" evaluation specially
             promptSections.push(`1. Why was my last move considered a "Good move"? What made it a solid choice?`);
             
             if (data.comment && data.comment.includes('Another was ')) {
+                console.log(getPrefix('data', 'Found alternative move suggestion'));
                 // There's an alternative move suggestion
                 const alternativeMove = data.comment.replace('Good move. Another was ', '').replace('Another was ', '');
                 promptSections.push(`2. The analysis mentions "Another was ${alternativeMove}". Why is this alternative move also good? What are the differences between my move and this alternative?`);
             } else {
+                console.log(getPrefix('data', 'No alternative move found, using general principles'));
                 // No alternative move mentioned
                 promptSections.push(`2. What key principles or ideas did my move follow that made it effective?`);
             }
             
             promptSections.push(`3. Based on the current position, what is a simple, general plan or strategy I should be trying to follow over the next few moves?`);
         } else {
+            console.log(getPrefix('data', 'Building prompt for non-good move scenario'));
             // Handle other move evaluations (mistakes, blunders, etc.)
             promptSections.push(`1. Why was my last move considered a "${data.feedback}"? What tactical or positional weaknesses did it create?`);
             
             if (data.comment && (data.comment.includes('Best was ') || data.comment.includes('Better was '))) {
+                console.log(getPrefix('data', 'Found suggested better move'));
                 const suggestedMove = data.comment.replace('Best was ', '').replace('Better was ', '');
                 promptSections.push(`2. Why is the suggested move "${suggestedMove}" considered better? What is the idea or plan behind it?`);
             } else {
+                console.log(getPrefix('data', 'No specific better move found, using general approach'));
                 promptSections.push(`2. What would have been a better approach in this position?`);
             }
             
@@ -241,7 +301,9 @@
 
         promptSections.push(``, `Focus on fundamental concepts and avoid overly complex variations.`);
 
-        return promptSections.join('\n').trim();
+        const finalPrompt = promptSections.join('\n').trim();
+        console.log(getPrefix('success', `Prompt built successfully (${finalPrompt.length} characters)`));
+        return finalPrompt;
     }
 
     /**
@@ -249,39 +311,58 @@
      * @param {string} prompt - The prompt to send to the AI.
      */
     async function fetchAIResponse(prompt) {
+        console.log(getPrefix('api', 'Starting AI response fetch'));
+        
         const responseContainer = document.getElementById('ai-coach-content');
+        console.log(getPrefix('ui', 'Showing loading spinner'));
         responseContainer.innerHTML = '<div class="ai-loader"><div class="spinner"></div></div>'; // Show loader
 
         const encodedPrompt = encodeURIComponent(prompt);
         const baseEndpoint = 'https://api.zpi.my.id/v1/ai/copilot';
         const fullUrl = `${baseEndpoint}?text=${encodedPrompt}`;
         const proxiedUrl = `https://cors.fadel.web.id/${fullUrl}`;
+        
+        console.log(getPrefix('api', `Making request to: ${proxiedUrl.substring(0, 100)}...`));
 
         GM_xmlhttpRequest({
             method: "GET",
             url: proxiedUrl,
             onload: function(response) {
+                console.log(getPrefix('api', `Response received with status: ${response.status}`));
+                
                 if (response.status >= 200 && response.status < 300) {
+                    console.log(getPrefix('success', 'API request successful, parsing response'));
                     try {
                         const data = JSON.parse(response.responseText);
+                        console.log(getPrefix('data', `API response code: ${data.code}`));
+                        
                         if (data.code === 200 && data.response && data.response.content) {
+                            console.log(getPrefix('data', `Content length: ${data.response.content.length} characters`));
+                            console.log(getPrefix('ui', 'Converting markdown to HTML and displaying'));
+                            
                             // Basic markdown to HTML conversion
                             let htmlContent = data.response.content
                                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
                                 .replace(/\n/g, '<br>'); // Newlines
                             responseContainer.innerHTML = `${htmlContent}`;
+                            
+                            console.log(getPrefix('success', 'AI response successfully displayed'));
                         } else {
+                            console.log(getPrefix('error', 'Unexpected API response format'));
                             throw new Error('Unexpected API response format');
                         }
                     } catch (error) {
-                         responseContainer.innerHTML = `<div class="ai-error">Error parsing AI response: ${error.message}</div>`;
+                        console.log(getPrefix('error', `Error parsing response: ${error.message}`));
+                        responseContainer.innerHTML = `<div class="ai-error">Error parsing AI response: ${error.message}</div>`;
                     }
                 } else {
+                    console.log(getPrefix('error', `API request failed with status: ${response.status}`));
                     responseContainer.innerHTML = `<div class="ai-error">Error fetching AI response. Status: ${response.status}</div>`;
                 }
             },
             onerror: function(error) {
-                 responseContainer.innerHTML = `<div class="ai-error">An error occurred: ${error.statusText || 'Network error'}</div>`;
+                console.log(getPrefix('error', `Network error: ${error.statusText || 'Unknown error'}`));
+                responseContainer.innerHTML = `<div class="ai-error">An error occurred: ${error.statusText || 'Network error'}</div>`;
             }
         });
     }
@@ -290,13 +371,22 @@
      * Main handler function to trigger the AI help process.
      */
     function handleAskAI() {
+        console.log(getPrefix('event', 'Ask AI button clicked or spacebar pressed'));
+        
         const chessData = extractChessData();
-        if (!chessData) return;
+        if (!chessData) {
+            console.log(getPrefix('error', 'Chess data extraction failed, aborting'));
+            return;
+        }
 
         // Ensure the AI Coach panel is expanded
+        console.log(getPrefix('ui', 'Ensuring AI Coach panel is expanded'));
         const aiCoachField = document.getElementById('ai-coach-field');
         if (aiCoachField && !aiCoachField.classList.contains('toggle-box--expanded')) {
+            console.log(getPrefix('ui', 'Expanding AI Coach panel'));
             aiCoachField.querySelector('legend').click();
+        } else {
+            console.log(getPrefix('info', 'AI Coach panel already expanded'));
         }
 
         const prompt = buildPrompt(chessData);
@@ -305,19 +395,29 @@
 
     // --- INITIALIZATION ---
     window.addEventListener('load', () => {
+        console.log(getPrefix('init', 'Window loaded, starting initialization'));
+        
         // Wait a bit for the dynamic page content to be fully loaded
-        setTimeout(setupUI, 500);
+        console.log(getPrefix('init', 'Waiting 500ms for dynamic content to load'));
+        setTimeout(() => {
+            console.log(getPrefix('init', 'Setting up UI after delay'));
+            setupUI();
+        }, 500);
 
         // Add spacebar shortcut
+        console.log(getPrefix('event', 'Setting up spacebar keyboard shortcut'));
         document.addEventListener('keydown', (event) => {
             const activeEl = document.activeElement;
             const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
 
             if (event.code === 'Space' && !isTyping) {
+                console.log(getPrefix('event', 'Spacebar shortcut triggered'));
                 event.preventDefault(); // Prevent default spacebar action (e.g., scrolling)
                 handleAskAI();
             }
         });
+        
+        console.log(getPrefix('success', 'Lichess AI Assistant initialization completed'));
     });
 
 })();
