@@ -265,7 +265,7 @@
 
     /**
      * Extracts all relevant chess data from the page.
-     * @returns {object|null} An object with fen, pgn, feedback, and comment, or null if data is missing.
+     * @returns {object|null} An object with fen, pgn, feedback, comment, and playerSide, or null if data is missing.
      */
     function extractChessData() {
         console.log(getPrefix('chess', 'Extracting chess data from page'));
@@ -284,6 +284,25 @@
         
         let feedback = 'N/A';
         let commentText = 'N/A';
+        let playerSide = 'N/A';
+
+        // Extract player's side from the practice box
+        const playerRunningEl = document.querySelector('.practice-box .player.running');
+        if (playerRunningEl) {
+            console.log(getPrefix('data', 'Found player running element, extracting side'));
+            const pieceEl = playerRunningEl.querySelector('piece');
+            if (pieceEl) {
+                const pieceClasses = pieceEl.className;
+                if (pieceClasses.includes('white')) {
+                    playerSide = 'white';
+                } else if (pieceClasses.includes('black')) {
+                    playerSide = 'black';
+                }
+                console.log(getPrefix('data', `Extracted player side: ${playerSide}`));
+            }
+        } else {
+            console.log(getPrefix('warning', 'No player running element found'));
+        }
 
         if (commentEl) {
             console.log(getPrefix('data', 'Found comment element, extracting feedback'));
@@ -306,6 +325,7 @@
             pgn: pgnTextarea.value,
             feedback,
             comment: commentText,
+            playerSide,
         };
         
         console.log(getPrefix('success', 'Chess data extraction completed'));
@@ -328,6 +348,7 @@
             ``,
             `**FEN:** ${data.fen}`,
             `**PGN:** ${data.pgn}`,
+            `**Playing as:** ${data.playerSide}`,
             ``,
             `**My Last Move's Analysis:**`,
             `**Feedback:** ${data.feedback}`,
