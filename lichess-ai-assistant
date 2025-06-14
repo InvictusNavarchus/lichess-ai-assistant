@@ -84,12 +84,17 @@
         /* AI Coach sidebar panel - styled to match WikiBook */
         #ai-coach-field {
             margin-top: 1rem;
+            min-height: 400px;
+            max-height: none;
+            flex-grow: 1;
         }
 
         .ai-coach-content {
             padding: 15px;
             line-height: 1.6;
             font-size: 14px;
+            min-height: 350px;
+            overflow-y: auto;
         }
 
         .ai-coach-content h3 {
