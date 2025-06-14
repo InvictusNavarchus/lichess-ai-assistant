@@ -370,7 +370,8 @@
             promptSections.push(`3. Based on the current position, what is a simple, general plan or strategy I should be trying to follow over the next few moves?`);
         }
 
-        promptSections.push(``, `Focus on fundamental concepts and avoid overly complex variations.`);
+        promptSections.push(``, `Focus on fundamental concepts and avoid overly complex variations. Provide a direct, instructional response without conversational openings, closings, or questions. Do not use phrases like "Great question!" or "Want to dive deeper?" - just provide clear, educational explanations.`);
+
 
         const finalPrompt = promptSections.join('\n').trim();
         console.log(getPrefix('success', `Prompt built successfully (${finalPrompt.length} characters)`));
