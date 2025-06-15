@@ -2,8 +2,8 @@
 // @name         Lichess AI Assistant
 // @namespace    http://tampermonkey.net/
 // @version      0.3.0
-// @description  AI-powered chess coach with interactive chat interface. Analyze positions, ask follow-up questions, and get personalized guidance in real-time.
-// @author       Invictus Navarchus
+// @description  AI-powered chess coach with a redesigned, modern chat interface.
+// @author       Invictus Navarchus & Gemini
 // @match        https://lichess.org/analysis*
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
@@ -42,259 +42,311 @@
     return `[${timestamp}] ${emoji}${actionText}:`;
   }
 
-  // --- STYLES ---
+  // --- STYLES (Modern Redesign) ---
   // Injects all the necessary CSS for the button and sidebar panel into the page.
   GM_addStyle(`
+        /* --- MODERN AI CHAT STYLES --- */
         :root {
-            --ai-helper-blue: #007bff;
-            --ai-helper-blue-dark: #0056b3;
-            --ai-helper-gray: #f0f0f0;
-            --ai-helper-white: #ffffff;
-            --ai-helper-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            /* Default to Dark Theme (matches Lichess 'dark' and 'system' on dark OS) */
+            --ai-bg-primary: #262421; /* Lichess bg-alt */
+            --ai-bg-secondary: #201f1c; /* Lichess bg */
+            --ai-bg-tertiary: #4a4a4a;
+            --ai-text-primary: #e3e3e3;
+            --ai-text-secondary: #b0b0b0;
+            --ai-accent-primary: #00aaff;
+            --ai-accent-hover: #33bbff;
+            --ai-user-msg-bg: #005c99;
+            --ai-ai-msg-bg: #3a3835;
+            --ai-border-color: #403e3a;
+            --ai-font-family: 'Roboto', 'Noto Sans', 'Helvetica Neue', sans-serif;
+            --ai-send-btn-color: #e3e3e3;
+            --ai-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
 
+        /* Light Theme overrides */
+        body[data-theme="light"], body.light {
+            --ai-bg-primary: #ffffff;
+            --ai-bg-secondary: #f3f3f3;
+            --ai-bg-tertiary: #e9e9e9;
+            --ai-text-primary: #222222;
+            --ai-text-secondary: #666666;
+            --ai-accent-primary: #007bff;
+            --ai-accent-hover: #0056b3;
+            --ai-user-msg-bg: #e3f2fd;
+            --ai-ai-msg-bg: #f1f1f1;
+            --ai-border-color: #e0e0e0;
+            --ai-send-btn-color: #ffffff;
+            --ai-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        @media (prefers-color-scheme: light) {
+            body[data-theme="system"] {
+                --ai-bg-primary: #ffffff;
+                --ai-bg-secondary: #f3f3f3;
+                --ai-bg-tertiary: #e9e9e9;
+                --ai-text-primary: #222222;
+                --ai-text-secondary: #666666;
+                --ai-accent-primary: #007bff;
+                --ai-accent-hover: #0056b3;
+                --ai-user-msg-bg: #e3f2fd;
+                --ai-ai-msg-bg: #f1f1f1;
+                --ai-border-color: #e0e0e0;
+                --ai-send-btn-color: #ffffff;
+                --ai-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            }
+        }
+
+        /* Main "Ask AI" Button */
         .ai-helper-button {
-            background: linear-gradient(145deg, var(--ai-helper-blue), var(--ai-helper-blue-dark));
-            color: var(--ai-helper-white);
+            background: var(--ai-accent-primary);
+            color: var(--ai-send-btn-color);
             border: none;
-            padding: 0 15px;
+            padding: 0 16px;
             height: 36px;
-            border-radius: 8px;
+            border-radius: 6px;
             font-size: 14px;
-            font-weight: 600;
+            font-weight: 500;
             cursor: pointer;
             margin-left: 10px;
             display: flex;
             align-items: center;
             gap: 8px;
-            transition: all 0.2s ease-in-out;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+            transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
         }
-
         .ai-helper-button:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--ai-helper-shadow);
+            background: var(--ai-accent-hover);
+            transform: translateY(-1px);
+            box-shadow: var(--ai-shadow);
         }
 
-        .ai-helper-button:active {
-            transform: translateY(0);
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
-        }
-
-        /* AI Chat interface - styled to match WikiBook */
+        /* Main AI Panel */
         #ai-coach-field {
+            border: 1px solid var(--ai-border-color) !important;
+            background-color: var(--ai-bg-primary);
+            border-radius: 8px;
             margin-top: 1rem;
-            min-height: 500px;
-            max-height: none;
-            flex-grow: 1;
+            padding: 0;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
         }
-
+        #ai-coach-field legend {
+            font-size: 1.1em;
+            font-weight: 600;
+            padding: 0 10px;
+            color: var(--ai-text-primary);
+        }
         .ai-chat-container {
             display: flex;
             flex-direction: column;
             height: 100%;
             min-height: 450px;
+            max-height: 70vh;
+            font-family: var(--ai-font-family);
+            flex-grow: 1;
         }
 
+        /* Messages Area */
         .ai-chat-messages {
             flex: 1;
-            padding: 15px;
+            padding: 20px 15px 10px;
             overflow-y: auto;
-            max-height: 400px;
-            border-bottom: 1px solid #e0e0e0;
-            font-size: 14px;
-            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
+        .ai-chat-messages::-webkit-scrollbar { width: 6px; }
+        .ai-chat-messages::-webkit-scrollbar-track { background: transparent; }
+        .ai-chat-messages::-webkit-scrollbar-thumb { background: var(--ai-bg-tertiary); border-radius: 3px; }
+        .ai-chat-messages::-webkit-scrollbar-thumb:hover { background: var(--ai-text-secondary); }
 
+        /* Individual Messages */
         .ai-chat-message {
-            margin-bottom: 15px;
-            padding: 10px;
-            border-radius: 8px;
+            padding: 12px 16px;
+            border-radius: 18px;
+            line-height: 1.5;
+            max-width: 85%;
+            word-wrap: break-word;
         }
-
         .ai-chat-message.user {
-            background-color: #e3f2fd;
-            margin-left: 20px;
-            position: relative;
+            background-color: var(--ai-user-msg-bg);
+            color: var(--ai-text-primary);
+            border-bottom-right-radius: 4px;
+            align-self: flex-end;
         }
-
-        .ai-chat-message.user::before {
-            content: "You";
-            position: absolute;
-            top: -5px;
-            right: 10px;
-            font-size: 12px;
-            font-weight: 600;
-            color: #1976d2;
-        }
-
         .ai-chat-message.ai {
-            background-color: #f5f5f5;
-            margin-right: 20px;
-            position: relative;
+            background-color: var(--ai-ai-msg-bg);
+            color: var(--ai-text-primary);
+            border-bottom-left-radius: 4px;
+            align-self: flex-start;
         }
-
-        .ai-chat-message.ai::before {
-            content: "AI Coach";
-            position: absolute;
-            top: -5px;
-            left: 10px;
+        .ai-message-author {
             font-size: 12px;
-            font-weight: 600;
-            color: #666;
+            font-weight: 700;
+            color: var(--ai-text-secondary);
+            margin-bottom: 6px;
+        }
+        .ai-chat-message.user .ai-message-author {
+            color: var(--ai-accent-hover);
+        }
+        .ai-message-content {
+            font-size: 14px;
+            color: var(--ai-text-primary);
+        }
+        .ai-message-content p { margin: 0; }
+        .ai-message-content strong { color: var(--ai-accent-primary); font-weight: 600; }
+        .ai-message-content br { content: ""; display: block; margin-bottom: 8px; }
+
+        /* Welcome & Special Messages */
+        .ai-chat-welcome {
+            text-align: center;
+            padding: 20px;
+            color: var(--ai-text-secondary);
+            font-size: 14px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            height: 100%;
+            justify-content: center;
+        }
+        .ai-chat-welcome::before {
+            content: '🤖';
+            font-size: 48px;
+        }
+        .ai-error, .ai-chat-message.ai.error {
+            background-color: #5c1c1c;
+            color: #ffc1c1;
+            border: 1px solid #c53030;
+            align-self: stretch;
+            max-width: 100%;
+        }
+        body[data-theme="light"] .ai-error, body[data-theme="light"] .ai-chat-message.ai.error {
+             background-color: #ffebee;
+             color: #c62828;
+             border: 1px solid #ffcdd2;
         }
 
-        .ai-chat-message p {
-            margin: 0 0 8px 0;
-        }
 
-        .ai-chat-message strong {
-            font-weight: 600;
-        }
-
+        /* Input Area */
         .ai-chat-input-container {
-            padding: 15px;
-            border-top: 1px solid #e0e0e0;
-            background-color: #fafafa;
+            padding: 12px;
+            border-top: 1px solid var(--ai-border-color);
+            background-color: var(--ai-bg-secondary);
         }
-
         .ai-chat-input-row {
             display: flex;
             gap: 8px;
             align-items: flex-end;
         }
-
         .ai-chat-input {
             flex: 1;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            padding: 10px 14px;
+            border: 1px solid var(--ai-border-color);
+            border-radius: 18px;
             font-size: 14px;
-            resize: vertical;
-            min-height: 40px;
-            max-height: 120px;
+            background-color: var(--ai-bg-primary);
+            color: var(--ai-text-primary);
+            resize: none;
+            min-height: 42px;
+            max-height: 150px;
             font-family: inherit;
+            line-height: 1.4;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
-
         .ai-chat-input:focus {
             outline: none;
-            border-color: var(--ai-helper-blue);
-            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+            border-color: var(--ai-accent-primary);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
         }
-
         .ai-chat-send-btn {
-            background: var(--ai-helper-blue);
-            color: white;
+            background: var(--ai-accent-primary);
             border: none;
-            padding: 10px 15px;
-            border-radius: 6px;
+            border-radius: 50%;
+            width: 42px;
+            height: 42px;
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
-            min-width: 60px;
-            transition: background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: background-color 0.2s, transform 0.1s;
         }
+        .ai-chat-send-btn svg { stroke: var(--ai-send-btn-color); }
+        .ai-chat-send-btn:hover { background: var(--ai-accent-hover); }
+        .ai-chat-send-btn:disabled { background: var(--ai-bg-tertiary); cursor: not-allowed; transform: scale(1); }
+        .ai-chat-send-btn:active:not(:disabled) { transform: scale(0.95); }
 
-        .ai-chat-send-btn:hover {
-            background: var(--ai-helper-blue-dark);
-        }
-
-        .ai-chat-send-btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
+        /* Shortcut Buttons / Chips */
         .ai-chat-shortcut-row {
-            margin-top: 8px;
+            margin-top: 10px;
             display: flex;
             gap: 8px;
+            flex-wrap: wrap;
         }
-
         .ai-chat-shortcut-btn {
-            background: #f0f0f0;
-            border: 1px solid #ddd;
+            background: var(--ai-bg-tertiary);
+            border: 1px solid transparent;
             padding: 6px 12px;
-            border-radius: 4px;
+            border-radius: 16px;
             cursor: pointer;
             font-size: 12px;
+            font-weight: 500;
+            color: var(--ai-text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
             transition: all 0.2s;
         }
-
         .ai-chat-shortcut-btn:hover {
-            background: #e0e0e0;
-            border-color: #ccc;
+            background: var(--ai-accent-primary);
+            color: var(--ai-send-btn-color);
         }
-
-        .ai-chat-welcome {
-            padding: 20px;
-            text-align: center;
-            color: #666;
-            font-style: italic;
-        }
+        .ai-chat-shortcut-btn .icon { font-size: 14px; }
 
         /* Loading Spinner */
         .ai-loader {
             display: flex;
-            justify-content: center;
             align-items: center;
-            padding: 20px;
+            justify-content: center;
+            gap: 10px;
+            color: var(--ai-text-secondary);
+            padding: 10px;
         }
-
-        .ai-loader .spinner {
-            width: 30px;
-            height: 30px;
-            border: 3px solid #f3f3f3;
-            border-bottom-color: var(--ai-helper-blue);
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--ai-text-secondary);
+            border-top-color: var(--ai-accent-primary);
             border-radius: 50%;
-            animation: rotation 1s linear infinite;
+            animation: rotation 0.8s linear infinite;
         }
+        @keyframes rotation { to { transform: rotate(360deg); } }
 
-        @keyframes rotation {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .ai-error, .ai-chat-message.ai.error {
-            color: #d32f2f;
-            padding: 15px;
-            font-size: 14px;
-            background-color: #ffebee;
-            border-radius: 6px;
-            border: 1px solid #ffcdd2;
-        }
-
-        /* Ensure AI Coach panel stays visible even when marked as empty */
-        #ai-coach-field.empty {
-            display: block !important;
-            visibility: visible !important;
-        }
-
-        #ai-coach-field.empty .ai-coach-content {
-            display: block !important;
-            visibility: visible !important;
-        }
+        /* Ensure AI Coach panel stays visible */
+        #ai-coach-field.empty { display: flex !important; visibility: visible !important; }
+        #ai-coach-field.empty .ai-coach-content { display: block !important; visibility: visible !important; }
     `);
 
   // --- UI ELEMENTS ---
   let aiButton;
   let aiCoachPanel;
   let mutationObserver;
-  let conversationHistory = []; // Store conversation history
+  let conversationHistory = [];
 
   /**
    * Adds a message to the conversation history and updates the UI.
    * @param {string} message - The message content
    * @param {string} role - Either 'user' or 'ai'
+   * @param {boolean} isError - True if the message is an error
    */
-  function addMessageToHistory(message, role) {
+  function addMessageToHistory(message, role, isError = false) {
     console.log(getPrefix('data', `Adding ${role} message to history`));
 
     conversationHistory.push({
       role: role,
       content: message,
       timestamp: new Date(),
+      isError: isError,
     });
 
     updateChatUI();
@@ -310,17 +362,25 @@
     if (!messagesContainer) return;
 
     if (conversationHistory.length === 0) {
-      messagesContainer.innerHTML =
-        '<div class="ai-chat-welcome">Start a conversation with your AI Chess Coach! Use the "Ask AI" button below or type your own question.</div>';
+      messagesContainer.innerHTML = `
+                <div class="ai-chat-welcome">
+                    <strong>Welcome to AI Chess Coach</strong>
+                    <span>Ask about the current position, why a move is good or bad, or general chess principles.</span>
+                </div>`;
       return;
     }
 
     messagesContainer.innerHTML = conversationHistory
       .map((msg) => {
-        const messageClass = msg.role === 'user' ? 'user' : 'ai';
+        const messageClass = msg.role === 'user' ? 'user' : msg.isError ? 'ai error' : 'ai';
         let content = msg.content;
 
-        // Escape HTML in user messages to prevent XSS
+        // Handle loaders, which have their own HTML
+        if (msg.id) {
+          return `<div class="ai-chat-message ai">${content}</div>`;
+        }
+
+        // Sanitize and format content
         if (msg.role === 'user') {
           content = content
             .replace(/&/g, '&amp;')
@@ -328,15 +388,22 @@
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;')
-            .replace(/\n/g, '<br>'); // Convert newlines to <br>
-        } else {
-          // Convert markdown to HTML for AI messages
+            .replace(/\n/g, '<br>');
+        } else if (!msg.isError) {
+          // Convert basic markdown for AI messages
           content = content
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
-            .replace(/\n/g, '<br>'); // Newlines
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/\n/g, '<br>');
         }
 
-        return `<div class="ai-chat-message ${messageClass}">${content}</div>`;
+        const authorName = msg.role === 'user' ? 'You' : 'AI Coach';
+
+        return `
+                <div class="ai-chat-message ${messageClass}">
+                    <div class="ai-message-author">${authorName}</div>
+                    <div class="ai-message-content">${content}</div>
+                </div>`;
       })
       .join('');
 
@@ -396,7 +463,7 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     const tempLoadingId = 'ai-loading-' + Date.now();
     conversationHistory.push({
       role: 'ai',
-      content: '<div class="ai-loader"><div class="spinner"></div></div>',
+      content: '<div class="ai-loader"><div class="spinner"></div><span>Thinking...</span></div>',
       timestamp: new Date(),
       id: tempLoadingId,
     });
@@ -433,25 +500,18 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
         conversationHistory = conversationHistory.filter((msg) => msg.id !== tempLoadingId);
 
         if (response.status >= 200 && response.status < 300) {
-          console.log(getPrefix('success', 'API request successful, parsing response'));
           try {
             const data = JSON.parse(response.responseText);
-            console.log(getPrefix('data', `API response code: ${data.code}`));
-
             if (data.code === 200 && data.response && data.response.content) {
-              console.log(getPrefix('success', 'AI response received, adding to history'));
               addMessageToHistory(data.response.content, 'ai');
             } else {
-              console.log(getPrefix('error', 'Unexpected API response format'));
-              addMessageToHistory('Error: Unexpected API response format', 'ai');
+              addMessageToHistory(`Error: Unexpected API response format.`, 'ai', true);
             }
           } catch (error) {
-            console.log(getPrefix('error', `Error parsing response: ${error.message}`));
-            addMessageToHistory(`Error parsing AI response: ${error.message}`, 'ai');
+            addMessageToHistory(`Error parsing AI response: ${error.message}`, 'ai', true);
           }
         } else {
-          console.log(getPrefix('error', `API request failed with status: ${response.status}`));
-          addMessageToHistory(`Error fetching AI response. Status: ${response.status}`, 'ai');
+          addMessageToHistory(`Error fetching AI response. Status: ${response.status}`, 'ai', true);
         }
 
         // Re-enable send button
@@ -461,9 +521,8 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
       onerror: function (error) {
         console.log(getPrefix('error', `Network error: ${error.statusText || 'Unknown error'}`));
 
-        // Remove loading message
         conversationHistory = conversationHistory.filter((msg) => msg.id !== tempLoadingId);
-        addMessageToHistory(`Network error: ${error.statusText || 'Unknown error'}`, 'ai');
+        addMessageToHistory(`Network error: ${error.statusText || 'Unknown error'}`, 'ai', true);
 
         // Re-enable send button
         const sendButton = document.getElementById('ai-chat-send-btn');
@@ -473,55 +532,34 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
   }
 
   /**
-   * Sets up a MutationObserver to prevent the AI Coach panel from being hidden
-   * when Lichess adds the 'empty' class due to WikiBook changes.
+   * Sets up a MutationObserver to prevent the AI Coach panel from being hidden.
    */
   function setupMutationObserver() {
     console.log(getPrefix('event', 'Setting up MutationObserver for AI Coach panel'));
-
     const targetNode = document.querySelector('.analyse__side');
     if (!targetNode) {
       console.log(getPrefix('error', 'Could not find sidebar for MutationObserver'));
       return;
     }
 
-    const config = {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class'],
-    };
+    const config = { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] };
 
     mutationObserver = new MutationObserver((mutationsList) => {
       for (const mutation of mutationsList) {
-        // Check if the AI Coach panel's classes were modified
         if (
           mutation.type === 'attributes' &&
           mutation.attributeName === 'class' &&
           mutation.target.id === 'ai-coach-field'
         ) {
-          const aiCoachField = mutation.target;
-          const classes = aiCoachField.classList;
-
-          // If the 'empty' class was added, remove it to keep the panel visible
-          if (classes.contains('empty')) {
-            console.log(
-              getPrefix('event', 'Detected empty class added to AI Coach panel, removing it')
-            );
-            classes.remove('empty');
+          if (mutation.target.classList.contains('empty')) {
+            console.log(getPrefix('event', 'Detected "empty" class, removing it.'));
+            mutation.target.classList.remove('empty');
           }
         }
-
-        // Also watch for the panel being removed and re-inject it if necessary
         if (mutation.type === 'childList') {
-          const aiCoachExists = document.getElementById('ai-coach-field');
-          if (!aiCoachExists && aiCoachPanel) {
+          if (!document.getElementById('ai-coach-field') && aiCoachPanel) {
             console.log(getPrefix('event', 'AI Coach panel was removed, re-injecting'));
-            const sidebar = document.querySelector('.analyse__side');
-            if (sidebar) {
-              sidebar.appendChild(aiCoachPanel);
-              console.log(getPrefix('success', 'AI Coach panel re-injected successfully'));
-            }
+            document.querySelector('.analyse__side')?.appendChild(aiCoachPanel);
           }
         }
       }
@@ -532,72 +570,65 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
   }
 
   /**
-   * Creates and injects the "Ask AI" button and the AI Coach sidebar panel into the DOM.
+   * Creates and injects the UI elements into the DOM.
    */
   function setupUI() {
     console.log(getPrefix('init', 'Setting up UI'));
 
     // Create the "Ask AI" button
-    console.log(getPrefix('ui', 'Creating Ask AI button'));
     aiButton = document.createElement('button');
     aiButton.className = 'ai-helper-button';
     aiButton.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-                <path d="M6 12.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5M4.5 9.5a.5.5 0 0 1 .5-.5h7a.5.5 0 0 1 0 1h-7a.5.5 0 0 1-.5-.5m2-3a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5m-2-3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5"/>
-                <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2z"/>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3c-1.2 0-2.4.6-3 1.7A3.4 3.4 0 004 8c-1.7 0-3 1.3-3 3s1.3 3 3 3c.6 0 1.2-.2 1.7-.5A3.4 3.4 0 008 20c0 1.7 1.3 3 3 3s3-1.3 3-3c0-.6-.2-1.2-.5-1.7A3.4 3.4 0 0020 14c1.7 0 3-1.3 3-3s-1.3-3-3-3c-.6 0-1.2.2-1.7.5A3.4 3.4 0 0014 4c0-1.7-1.3-3-3-3z"></path>
+                <path d="M12 5v14"></path><path d="M5 12h14"></path>
             </svg>
-            <span>Ask AI</span>
-        `;
+            <span>Ask AI</span>`;
     aiButton.onclick = handleAskAIShortcut;
 
-    // Create the AI Chat interface (similar to WikiBook)
-    console.log(getPrefix('ui', 'Creating AI Chat interface'));
+    // Create the AI Chat interface
     aiCoachPanel = document.createElement('fieldset');
     aiCoachPanel.className = 'analyse__wiki toggle-box toggle-box--toggle toggle-box--ready';
     aiCoachPanel.id = 'ai-coach-field';
     aiCoachPanel.innerHTML = `
             <legend tabindex="0">AI Chess Coach</legend>
             <div class="ai-chat-container">
-                <div class="ai-chat-messages" id="ai-chat-messages">
-                    <div class="ai-chat-welcome">Start a conversation with your AI Chess Coach! Use the "Ask AI" button below or type your own question.</div>
-                </div>
+                <div class="ai-chat-messages" id="ai-chat-messages"></div>
                 <div class="ai-chat-input-container">
                     <div class="ai-chat-input-row">
-                        <textarea class="ai-chat-input" id="ai-chat-input" placeholder="Ask me anything about this position or chess in general..." rows="2"></textarea>
-                        <button class="ai-chat-send-btn" id="ai-chat-send-btn">Send</button>
+                        <textarea class="ai-chat-input" id="ai-chat-input" placeholder="Ask your AI coach..." rows="1"></textarea>
+                        <button class="ai-chat-send-btn" id="ai-chat-send-btn" title="Send (Ctrl+Enter)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
                     </div>
                     <div class="ai-chat-shortcut-row">
-                        <button class="ai-chat-shortcut-btn" id="ai-ask-position-btn">📋 Ask AI about Position</button>
-                        <button class="ai-chat-shortcut-btn" id="ai-clear-chat-btn">🗑️ Clear Chat</button>
+                        <button class="ai-chat-shortcut-btn" id="ai-ask-position-btn">
+                            <span class="icon">💡</span> Explain Position
+                        </button>
+                        <button class="ai-chat-shortcut-btn" id="ai-clear-chat-btn">
+                            <span class="icon">🗑️</span> Clear Chat
+                        </button>
                     </div>
                 </div>
-            </div>
-        `;
+            </div>`;
 
-    // Append button to controls
-    console.log(getPrefix('ui', 'Injecting button to controls container'));
+    // Inject UI elements
     const controlsContainer = document.querySelector('.analyse__controls .features');
-    if (controlsContainer) {
-      controlsContainer.appendChild(aiButton);
-      console.log(getPrefix('success', 'Ask AI button successfully injected'));
-    } else {
-      console.log(getPrefix('error', 'Could not find controls container to inject button'));
-    }
+    controlsContainer
+      ? controlsContainer.appendChild(aiButton)
+      : console.log(getPrefix('error', 'Could not find controls container.'));
 
-    // Append AI Coach panel to sidebar (after WikiBook)
-    console.log(getPrefix('ui', 'Injecting AI Chat interface to sidebar'));
     const sidebar = document.querySelector('.analyse__side');
     if (sidebar) {
       sidebar.appendChild(aiCoachPanel);
-      console.log(getPrefix('success', 'AI Chat interface successfully injected'));
-
-      // Setup event listeners for chat interface
+      updateChatUI(); // Initialize with welcome message
       setupChatEventListeners();
-
-      // Setup MutationObserver after the panel is injected
       setupMutationObserver();
     } else {
-      console.log(getPrefix('error', 'Could not find sidebar to inject AI Chat interface'));
+      console.log(getPrefix('error', 'Could not find sidebar to inject AI Chat interface.'));
     }
   }
 
@@ -612,34 +643,20 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     const askPositionButton = document.getElementById('ai-ask-position-btn');
     const clearChatButton = document.getElementById('ai-clear-chat-btn');
 
-    // Send button click
-    if (sendButton) {
-      sendButton.addEventListener('click', handleSendMessage);
-    }
+    sendButton?.addEventListener('click', handleSendMessage);
+    askPositionButton?.addEventListener('click', handleAskAIShortcut);
+    clearChatButton?.addEventListener('click', () => {
+      console.log(getPrefix('event', 'Clear chat button clicked'));
+      conversationHistory = [];
+      updateChatUI();
+    });
 
-    // Enter key in chat input (Ctrl+Enter or Shift+Enter to send)
-    if (chatInput) {
-      chatInput.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && (event.ctrlKey || event.shiftKey)) {
-          event.preventDefault();
-          handleSendMessage();
-        }
-      });
-    }
-
-    // Ask about position shortcut button
-    if (askPositionButton) {
-      askPositionButton.addEventListener('click', handleAskAIShortcut);
-    }
-
-    // Clear chat button
-    if (clearChatButton) {
-      clearChatButton.addEventListener('click', () => {
-        console.log(getPrefix('event', 'Clear chat button clicked'));
-        conversationHistory = [];
-        updateChatUI();
-      });
-    }
+    chatInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.shiftKey)) {
+        event.preventDefault();
+        handleSendMessage();
+      }
+    });
   }
 
   /**
@@ -647,24 +664,18 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
    */
   function handleSendMessage() {
     console.log(getPrefix('event', 'Send message triggered'));
-
     const chatInput = document.getElementById('ai-chat-input');
     const sendButton = document.getElementById('ai-chat-send-btn');
 
     if (!chatInput || !sendButton) return;
-
     const message = chatInput.value.trim();
     if (!message) return;
 
-    // Clear input and disable send button during processing
     chatInput.value = '';
     sendButton.disabled = true;
 
-    // Ensure the AI Coach panel is expanded
-    const aiCoachField = document.getElementById('ai-coach-field');
-    if (aiCoachField && !aiCoachField.classList.contains('toggle-box--expanded')) {
-      console.log(getPrefix('ui', 'Expanding AI Coach panel'));
-      aiCoachField.querySelector('legend').click();
+    if (aiCoachPanel && !aiCoachPanel.classList.contains('toggle-box--expanded')) {
+      aiCoachPanel.querySelector('legend')?.click();
     }
 
     sendMessageToAI(message);
@@ -672,71 +683,46 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
 
   /**
    * Extracts all relevant chess data from the page.
-   * @returns {object|null} An object with fen, pgn, feedback, comment, and playerSide, or null if data is missing.
+   * @returns {object|null} An object with chess data, or null if missing.
    */
   function extractChessData() {
-    console.log(getPrefix('chess', 'Extracting chess data from page'));
-
+    console.log(getPrefix('chess', 'Extracting chess data'));
     const fenInput = document.querySelector('.copyables .pair input.copyable');
     const pgnTextarea = document.querySelector('.copyables .pgn textarea.copyable');
-    const commentEl = document.querySelector('.practice-box .comment');
 
     if (!fenInput || !pgnTextarea) {
       console.log(getPrefix('error', 'Could not find FEN or PGN data on page'));
-      alert('AI Helper: Could not find FEN or PGN data on the page.');
       return null;
     }
 
-    console.log(getPrefix('data', 'Found FEN and PGN data'));
+    const commentEl = document.querySelector('.practice-box .comment');
+    const playerRunningEl = document.querySelector('.practice-box .player.running piece');
 
-    let feedback = 'N/A';
-    let commentText = 'N/A';
-    let playerSide = 'N/A';
+    let feedback = 'N/A',
+      commentText = 'N/A',
+      playerSide = 'N/A';
 
-    // Extract player's side from the practice box
-    const playerRunningEl = document.querySelector('.practice-box .player.running');
     if (playerRunningEl) {
-      console.log(getPrefix('data', 'Found player running element, extracting side'));
-      const pieceEl = playerRunningEl.querySelector('piece');
-      if (pieceEl) {
-        const pieceClasses = pieceEl.className;
-        if (pieceClasses.includes('white')) {
-          playerSide = 'white';
-        } else if (pieceClasses.includes('black')) {
-          playerSide = 'black';
-        }
-        console.log(getPrefix('data', `Extracted player side: ${playerSide}`));
-      }
-    } else {
-      console.log(getPrefix('warning', 'No player running element found'));
+      playerSide = playerRunningEl.className.includes('white') ? 'white' : 'black';
     }
 
     if (commentEl) {
-      console.log(getPrefix('data', 'Found comment element, extracting feedback'));
       const verdictEl = commentEl.querySelector('.verdict');
       if (verdictEl) {
         feedback = verdictEl.textContent.trim();
-        console.log(getPrefix('data', `Extracted feedback: ${feedback}`));
-        // To get only the suggestion text, we clone the element and remove the verdict part.
         const commentClone = commentEl.cloneNode(true);
         commentClone.querySelector('.verdict').remove();
         commentText = commentClone.textContent.trim();
-        console.log(getPrefix('data', `Extracted comment: ${commentText.substring(0, 50)}...`));
       }
-    } else {
-      console.log(getPrefix('warning', 'No comment element found'));
     }
 
-    const extractedData = {
+    return {
       fen: fenInput.value,
       pgn: pgnTextarea.value,
       feedback,
       comment: commentText,
       playerSide,
     };
-
-    console.log(getPrefix('success', 'Chess data extraction completed'));
-    return extractedData;
   }
 
   /**
@@ -746,134 +732,82 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
    */
   function buildPrompt(data) {
     console.log(getPrefix('data', 'Building AI prompt'));
-
     const isGoodMove = data.feedback === 'Good move';
-    console.log(getPrefix('data', `Move evaluation: ${data.feedback} (isGoodMove: ${isGoodMove})`));
 
     let promptSections = [
-      `I am a beginner chess player seeking help. Here is the current game state:`,
-      ``,
-      `**FEN:** ${data.fen}`,
-      `**PGN:** ${data.pgn}`,
-      `**Playing as:** ${data.playerSide}`,
-      ``,
-      `**My Last Move's Analysis:**`,
-      `**Feedback:** ${data.feedback}`,
-      `**Stockfish Comment:** ${data.comment}`,
-      ``,
-      `Please explain in simple, easy-to-understand terms for a beginner:`,
+      `I am a beginner chess player. My last move was evaluated as: **${data.feedback}**.`,
+      `Please explain this for a beginner, focusing on core principles.`,
+      `**Playing as:** ${data.playerSide}.`,
+      `**My Last Move's Analysis:** ${data.comment}`,
+      `---`,
     ];
 
     if (isGoodMove) {
-      console.log(getPrefix('data', 'Building prompt for good move scenario'));
-      // Handle "Good Move" evaluation specially with critical analysis
       promptSections.push(
-        `1. Why was my last move considered a "Good move"? What made it a solid choice? If this move involves trading pieces or making what might seem like a sacrifice, explain exactly why this trade/sacrifice is beneficial and whether it's truly the best move available in this position.`
+        `1. Why was my last move good? What fundamental principle did it follow?`
       );
-
       if (data.comment && data.comment.includes('Another was ')) {
-        console.log(getPrefix('data', 'Found alternative move suggestion'));
-        // There's an alternative move suggestion
-        const alternativeMove = data.comment
-          .replace('Good move. Another was ', '')
-          .replace('Another was ', '');
+        const alternativeMove = data.comment.split('Another was ')[1];
         promptSections.push(
-          `2. The analysis mentions "Another was ${alternativeMove}". Why is this alternative move also good? What are the differences between my move and this alternative? If my move seems counterintuitive compared to the alternative (e.g., trading valuable pieces), explain which move would be better for a beginner and why.`
+          `2. The analysis suggests "${alternativeMove}". Why is it also a good option? Compare it to my move.`
         );
       } else {
-        console.log(getPrefix('data', 'No alternative move found, using general principles'));
-        // No alternative move mentioned
         promptSections.push(
-          `2. What key principles or ideas did my move follow that made it effective? If this move seems counterintuitive to basic chess principles (like trading a more valuable piece for a less valuable one), explain the deeper strategic reason and whether a beginner should prioritize this type of move.`
+          `2. What other good moves were available and what was their main idea?`
         );
       }
-
-      promptSections.push(
-        `3. Based on the current position, what is a simple, general plan or strategy I should be trying to follow over the next few moves?`
-      );
     } else {
-      console.log(getPrefix('data', 'Building prompt for non-good move scenario'));
-      // Handle other move evaluations (mistakes, blunders, etc.)
       promptSections.push(
-        `1. Why was my last move considered a "${data.feedback}"? What tactical or positional weaknesses did it create?`
+        `1. Why was my last move a "${data.feedback}"? What tactical or positional weakness did it create?`
       );
-
       if (
         data.comment &&
         (data.comment.includes('Best was ') || data.comment.includes('Better was '))
       ) {
-        console.log(getPrefix('data', 'Found suggested better move'));
-        const suggestedMove = data.comment.replace('Best was ', '').replace('Better was ', '');
+        const suggestedMove = data.comment.replace(/Best was |Better was /g, '');
         promptSections.push(
-          `2. Why is the suggested move "${suggestedMove}" considered better? What is the idea or plan behind it?`
+          `2. Why is the suggested move "${suggestedMove}" better? What is its core idea?`
         );
       } else {
-        console.log(getPrefix('data', 'No specific better move found, using general approach'));
         promptSections.push(`2. What would have been a better approach in this position?`);
       }
-
-      promptSections.push(
-        `3. Based on the current position, what is a simple, general plan or strategy I should be trying to follow over the next few moves?`
-      );
     }
-
     promptSections.push(
-      ``,
-      `Focus on fundamental concepts and avoid overly complex variations. When evaluating "Good move" assessments, be especially critical - if a move seems counterintuitive to basic chess principles (like material trades that don't make obvious sense), explain the deeper reasoning and whether it's truly optimal for a beginner's development. Provide a direct, instructional response without conversational openings, closings, or questions. Do not use phrases like "Great question!" or "Want to dive deeper?" - just provide clear, educational explanations.`
+      `3. What is a simple, general plan I should follow for the next few moves?`
     );
-
-    const finalPrompt = promptSections.join('\n').trim();
-    console.log(
-      getPrefix('success', `Prompt built successfully (${finalPrompt.length} characters)`)
-    );
-    return finalPrompt;
+    promptSections.push(`---`, `Be direct and educational. Avoid conversational fluff.`);
+    return promptSections.join('\n');
   }
 
   /**
-   * Main handler function for the "Ask AI about Position" shortcut button.
-   * This sends a position analysis request to the chat interface.
+   * Main handler for the "Ask AI about Position" shortcut.
    */
   function handleAskAIShortcut() {
-    console.log(getPrefix('event', 'Ask AI shortcut button clicked or spacebar pressed'));
+    console.log(getPrefix('event', 'Ask AI shortcut triggered'));
 
     const chessData = extractChessData();
     if (!chessData) {
-      console.log(getPrefix('error', 'Chess data extraction failed, aborting'));
+      addMessageToHistory(
+        'Could not find required chess data (FEN/PGN) on the page to analyze.',
+        'ai',
+        true
+      );
       return;
     }
 
-    // Ensure the AI Coach panel is expanded
-    console.log(getPrefix('ui', 'Ensuring AI Coach panel is expanded'));
-    const aiCoachField = document.getElementById('ai-coach-field');
-    if (aiCoachField && !aiCoachField.classList.contains('toggle-box--expanded')) {
-      console.log(getPrefix('ui', 'Expanding AI Coach panel'));
-      aiCoachField.querySelector('legend').click();
-    } else {
-      console.log(getPrefix('info', 'AI Coach panel already expanded'));
+    if (aiCoachPanel && !aiCoachPanel.classList.contains('toggle-box--expanded')) {
+      aiCoachPanel.querySelector('legend')?.click();
     }
 
-    // Build comprehensive position analysis prompt using buildPrompt()
-    console.log(getPrefix('data', 'Building comprehensive prompt for position analysis'));
     const positionPrompt = buildPrompt(chessData);
-
-    // Send the position analysis question directly to the chat
-    console.log(getPrefix('api', 'Sending position analysis question to chat'));
     sendMessageToAI(positionPrompt);
   }
 
   // --- INITIALIZATION ---
   window.addEventListener('load', () => {
     console.log(getPrefix('init', 'Window loaded, starting initialization'));
+    setTimeout(setupUI, 500); // Wait for Lichess UI to be ready
 
-    // Wait a bit for the dynamic page content to be fully loaded
-    console.log(getPrefix('init', 'Waiting 500ms for dynamic content to load'));
-    setTimeout(() => {
-      console.log(getPrefix('init', 'Setting up UI after delay'));
-      setupUI();
-    }, 500);
-
-    // Add spacebar shortcut
-    console.log(getPrefix('event', 'Setting up spacebar keyboard shortcut'));
     document.addEventListener('keydown', (event) => {
       const activeEl = document.activeElement;
       const isTyping =
@@ -881,20 +815,15 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
         (activeEl.tagName === 'INPUT' ||
           activeEl.tagName === 'TEXTAREA' ||
           activeEl.isContentEditable);
-
       if (event.code === 'Space' && !isTyping) {
-        console.log(getPrefix('event', 'Spacebar shortcut triggered'));
-        event.preventDefault(); // Prevent default spacebar action (e.g., scrolling)
+        event.preventDefault();
         handleAskAIShortcut();
       }
     });
-
     console.log(getPrefix('success', 'Lichess AI Assistant initialization completed'));
   });
 
-  // Cleanup when page unloads
   window.addEventListener('beforeunload', () => {
-    console.log(getPrefix('init', 'Cleaning up before page unload'));
     if (mutationObserver) {
       mutationObserver.disconnect();
       console.log(getPrefix('success', 'MutationObserver disconnected'));
