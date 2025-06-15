@@ -488,6 +488,23 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     const fullUrl = `${baseEndpoint}?text=${encodedPrompt}`;
     const proxiedUrl = `https://cors.fadel.web.id/${fullUrl}`;
 
+    // Debug logging for request parameters and message
+    console.debug(getPrefix('api', 'Full debug info for API request'));
+    console.debug('Original user message:', message);
+    console.debug('System prompt:', systemPrompt);
+    console.debug('Conversation context:', conversationContext);
+    console.debug('Full prompt (before encoding):', fullPrompt);
+    console.debug('Encoded prompt:', encodedPrompt);
+    console.debug('Base endpoint:', baseEndpoint);
+    console.debug('Full URL (before proxy):', fullUrl);
+    console.debug('Proxied URL (final request):', proxiedUrl);
+    console.debug('Request method: GET');
+    console.debug('Request parameters:', {
+      text: encodedPrompt,
+      originalLength: fullPrompt.length,
+      encodedLength: encodedPrompt.length,
+    });
+
     console.log(getPrefix('api', `Making request with conversation context`));
 
     GM_xmlhttpRequest({
