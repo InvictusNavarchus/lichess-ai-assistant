@@ -489,21 +489,48 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     const proxiedUrl = `https://cors.fadel.web.id/${fullUrl}`;
 
     // Debug logging for request parameters and message
-    console.debug(getPrefix('api', 'Full debug info for API request'));
-    console.debug('Original user message:', message);
-    console.debug('System prompt:', systemPrompt);
-    console.debug('Conversation context:', conversationContext);
-    console.debug('Full prompt (before encoding):', fullPrompt);
-    console.debug('Encoded prompt:', encodedPrompt);
+    console.debug(
+      '%c🔍 API REQUEST DEBUG INFO',
+      'background: #1e40af; color: white; padding: 4px 8px; border-radius: 4px; font-weight: bold;'
+    );
+    console.debug(
+      '%c📝 USER MESSAGE:',
+      'background: #059669; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold;',
+      message
+    );
+    console.debug(
+      '%c🧠 SYSTEM PROMPT:',
+      'background: #7c3aed; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold;'
+    );
+    console.debug(systemPrompt);
+    console.debug(
+      '%c💬 CONVERSATION CONTEXT:',
+      'background: #dc2626; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold;',
+      conversationContext
+    );
+    console.debug(
+      '%c📄 FULL PROMPT (before encoding):',
+      'background: #ea580c; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold;'
+    );
+    console.debug(fullPrompt);
+    console.debug(
+      '%c🔗 REQUEST URLS:',
+      'background: #0891b2; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold;'
+    );
     console.debug('Base endpoint:', baseEndpoint);
     console.debug('Full URL (before proxy):', fullUrl);
     console.debug('Proxied URL (final request):', proxiedUrl);
-    console.debug('Request method: GET');
-    console.debug('Request parameters:', {
-      text: encodedPrompt,
-      originalLength: fullPrompt.length,
-      encodedLength: encodedPrompt.length,
-    });
+    console.debug(
+      '%c📊 REQUEST STATS:',
+      'background: #be185d; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold;',
+      {
+        method: 'GET',
+        originalLength: fullPrompt.length,
+        encodedLength: encodedPrompt.length,
+        compressionRatio:
+          (((fullPrompt.length - encodedPrompt.length) / fullPrompt.length) * 100).toFixed(1) + '%',
+      }
+    );
 
     console.log(getPrefix('api', `Making request with conversation context`));
 
