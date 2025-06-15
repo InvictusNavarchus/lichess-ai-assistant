@@ -325,6 +325,11 @@
         /* Ensure AI Coach panel stays visible */
         #ai-coach-field.empty { display: flex !important; visibility: visible !important; }
         #ai-coach-field.empty .ai-coach-content { display: block !important; visibility: visible !important; }
+
+        /* Fix for chat interface sinking issue */
+        .analyse__side {
+            display: block !important;
+        }
     `);
 
   // --- UI ELEMENTS ---
