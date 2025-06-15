@@ -137,9 +137,7 @@
     console.debug(getPrefix('data', 'Looking for FEN input'), {
       found: !!fenInput,
       selector: '.copyables .pair input.copyable',
-      allCopyables: document.querySelectorAll('.copyables').length,
-      allPairs: document.querySelectorAll('.pair').length,
-      allInputs: document.querySelectorAll('input.copyable').length,
+      initialValue: fenInput?.value,
     });
 
     if (!fenInput) {
@@ -148,93 +146,68 @@
       return;
     }
 
-    console.debug(getPrefix('data', 'Found FEN input, setting up observers'), {
+    console.debug(getPrefix('data', 'Found FEN input, setting up focused observer'), {
       element: fenInput,
       initialValue: fenInput.value,
       tagName: fenInput.tagName,
       className: fenInput.className,
-      id: fenInput.id,
     });
 
+    // FOCUSED OBSERVER: Only watch the FEN input element and its parent container
     fenObserver = new MutationObserver((mutations) => {
-      console.debug(getPrefix('event', 'MutationObserver triggered'), {
+      console.debug(getPrefix('event', 'FEN-focused MutationObserver triggered'), {
         mutationCount: mutations.length,
-        types: mutations.map((m) => m.type),
-        targets: mutations.map((m) => m.target.tagName || m.target.nodeType),
       });
 
       mutations.forEach((mutation, index) => {
-        console.debug(getPrefix('data', `Mutation ${index}`), {
+        console.debug(getPrefix('data', `FEN Mutation ${index}`), {
           type: mutation.type,
           attributeName: mutation.attributeName,
-          target: mutation.target,
-          oldValue: mutation.oldValue,
-          addedNodes: mutation.addedNodes?.length,
-          removedNodes: mutation.removedNodes?.length,
+          target: mutation.target.tagName,
+          targetValue: mutation.target.value,
         });
 
-        if (mutation.type === 'attributes' && mutation.attributeName === 'value') {
-          console.debug(getPrefix('chess', 'FEN value attribute changed, capturing'));
+        // Only care about value attribute changes on the FEN input
+        if (
+          mutation.type === 'attributes' &&
+          mutation.attributeName === 'value' &&
+          mutation.target === fenInput
+        ) {
+          console.debug(getPrefix('chess', 'FEN input value changed directly'));
           captureFen();
-        }
-        // Also watch for any changes in the board area that might indicate a move
-        if (mutation.type === 'childList' || mutation.type === 'attributes') {
-          const target = mutation.target;
-          if (target && (target.classList?.contains('cg-board') || target.closest('.cg-board'))) {
-            console.debug(getPrefix('chess', 'Board area changed, capturing FEN with delay'));
-            setTimeout(captureFen, 50); // Small delay to let the FEN update
-          }
         }
       });
     });
 
-    // Also listen for input value changes via property changes
+    // Watch only the FEN input element for value changes
+    fenObserver.observe(fenInput, {
+      attributes: true,
+      attributeFilter: ['value'],
+    });
+    console.debug(getPrefix('data', 'Observing ONLY FEN input for value changes'));
+
+    // Also override the value property to catch programmatic changes
     console.debug(getPrefix('data', 'Setting up property descriptor override'));
     const originalValueSetter = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
       'value'
     ).set;
+
     Object.defineProperty(fenInput, 'value', {
       set: function (val) {
-        console.debug(getPrefix('data', 'FEN input value setter called'), {
+        console.debug(getPrefix('data', 'FEN input value setter intercepted'), {
           oldValue: this.getAttribute('value'),
           newValue: val,
         });
         originalValueSetter.call(this, val);
-        setTimeout(captureFen, 10); // Small delay to ensure DOM is updated
+        setTimeout(captureFen, 10);
       },
       get: function () {
         return this.getAttribute('value') || '';
       },
     });
 
-    // Observe the FEN input for attribute changes
-    fenObserver.observe(fenInput, {
-      attributes: true,
-      attributeFilter: ['value'],
-    });
-    console.debug(getPrefix('data', 'Observing FEN input for attribute changes'));
-
-    // Also observe the board area for move changes
-    const boardElement =
-      document.querySelector('.cg-board') || document.querySelector('.main-board');
-    console.debug(getPrefix('data', 'Looking for board element'), {
-      cgBoard: !!document.querySelector('.cg-board'),
-      mainBoard: !!document.querySelector('.main-board'),
-      found: !!boardElement,
-    });
-
-    if (boardElement) {
-      fenObserver.observe(boardElement, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['class', 'style'],
-      });
-      console.debug(getPrefix('data', 'Observing board element for changes'));
-    }
-
-    console.log(getPrefix('success', 'FEN tracking setup completed'));
+    console.log(getPrefix('success', 'FEN tracking setup completed - focused approach'));
   }
 
   /**
