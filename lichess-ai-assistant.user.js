@@ -816,9 +816,6 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
         promptSections.push(`2. What would have been a better approach in this position?`);
       }
     }
-    promptSections.push(
-      `3. What is a simple, general plan I should follow for the next few moves?`
-    );
     promptSections.push(`---`, `Be direct and educational. Avoid conversational fluff.`);
     return promptSections.join('\n');
   }
