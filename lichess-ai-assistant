@@ -823,19 +823,13 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
             console.log(getPrefix('info', 'AI Coach panel already expanded'));
         }
 
-        // Create a focused question about the current position
-        const isGoodMove = chessData.feedback === 'Good move';
-        let positionQuestion;
-        
-        if (isGoodMove) {
-            positionQuestion = `Please analyze my last move (${chessData.feedback}). Why was it considered good? What are the key ideas behind this move, and what should my general plan be going forward?`;
-        } else {
-            positionQuestion = `Please analyze my last move (${chessData.feedback}). What went wrong with this move? What would have been better, and what should I focus on in this position?`;
-        }
+        // Build comprehensive position analysis prompt using buildPrompt()
+        console.log(getPrefix('data', 'Building comprehensive prompt for position analysis'));
+        const positionPrompt = buildPrompt(chessData);
         
         // Send the position analysis question directly to the chat
         console.log(getPrefix('api', 'Sending position analysis question to chat'));
-        sendMessageToAI(positionQuestion);
+        sendMessageToAI(positionPrompt);
     }
 
     // --- INITIALIZATION ---
