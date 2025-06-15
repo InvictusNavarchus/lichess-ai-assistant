@@ -146,91 +146,39 @@
       return;
     }
 
-    console.debug(getPrefix('data', 'Found FEN input, setting up property override only'), {
+    console.debug(getPrefix('data', 'Found FEN input, setting up event listeners'), {
       element: fenInput,
       initialValue: fenInput.value,
       tagName: fenInput.tagName,
       className: fenInput.className,
     });
 
-    // Skip mutation observer entirely - it doesn't catch programmatic value changes
-    console.debug(getPrefix('data', 'Skipping mutation observer - focusing on property override'));
+    // Try multiple event-based approaches since property descriptor isn't working
+    console.debug(getPrefix('data', 'Setting up event listeners for FEN changes'));
 
-    // Try watching the parent element for child changes (in case input is replaced)
-    const parentElement = fenInput.parentElement;
-    console.debug(getPrefix('data', 'Setting up parent observer'), {
-      parent: parentElement,
-      parentClass: parentElement?.className,
+    // Method 1: Standard input events
+    fenInput.addEventListener('input', () => {
+      console.debug(getPrefix('event', 'Input event triggered'));
+      captureFen();
     });
 
-    fenObserver = new MutationObserver((mutations) => {
-      console.debug(getPrefix('event', 'Parent MutationObserver triggered'), {
-        mutationCount: mutations.length,
-      });
-
-      mutations.forEach((mutation, index) => {
-        console.debug(getPrefix('data', `Parent Mutation ${index}`), {
-          type: mutation.type,
-          target: mutation.target,
-          addedNodes: mutation.addedNodes?.length,
-          removedNodes: mutation.removedNodes?.length,
-        });
-
-        // Check if input element was replaced or content changed
-        setTimeout(() => {
-          console.debug(getPrefix('chess', 'Checking FEN after parent mutation'));
-          captureFen();
-        }, 50);
-      });
+    fenInput.addEventListener('change', () => {
+      console.debug(getPrefix('event', 'Change event triggered'));
+      captureFen();
     });
 
-    if (parentElement) {
-      fenObserver.observe(parentElement, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-      });
-      console.debug(getPrefix('data', 'Observing parent element for changes'));
-    }
+    // Method 2: Focus events (in case value changes when field gains/loses focus)
+    fenInput.addEventListener('focus', () => {
+      console.debug(getPrefix('event', 'Focus event triggered'));
+      setTimeout(captureFen, 10);
+    });
 
-    // Override the value property to catch programmatic changes - THIS IS THE KEY
-    console.debug(getPrefix('data', 'Setting up property descriptor override'));
-    const originalValueSetter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      'value'
-    ).set;
-    const originalValueGetter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      'value'
-    ).get;
+    fenInput.addEventListener('blur', () => {
+      console.debug(getPrefix('event', 'Blur event triggered'));
+      setTimeout(captureFen, 10);
+    });
 
-    // Test that we can override the property
-    try {
-      Object.defineProperty(fenInput, 'value', {
-        configurable: true,
-        set: function (val) {
-          console.debug(getPrefix('data', 'FEN input value setter intercepted'), {
-            oldValue: originalValueGetter.call(this),
-            newValue: val,
-          });
-          originalValueSetter.call(this, val);
-          setTimeout(captureFen, 10);
-        },
-        get: function () {
-          return originalValueGetter.call(this);
-        },
-      });
-      console.debug(getPrefix('success', 'Property descriptor override successful'));
-
-      // Test the override
-      console.debug(getPrefix('data', 'Testing property override'));
-      const testValue = fenInput.value;
-      fenInput.value = testValue; // This should trigger our setter
-    } catch (error) {
-      console.debug(getPrefix('error', 'Property descriptor override failed'), error);
-    }
-
-    console.log(getPrefix('success', 'FEN tracking setup completed - property override approach'));
+    console.log(getPrefix('success', 'FEN tracking setup completed - event listener approach'));
   }
 
   /**
