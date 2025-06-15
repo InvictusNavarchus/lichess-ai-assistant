@@ -58,17 +58,37 @@
    * @param {string} fen - The FEN string to add
    */
   function addFenToStack(fen) {
-    if (!fen || typeof fen !== 'string') return;
+    console.debug(getPrefix('data', 'addFenToStack called'), {
+      fen,
+      currentStackSize: fenStack.length,
+    });
+
+    if (!fen || typeof fen !== 'string') {
+      console.debug(getPrefix('warning', 'Invalid FEN provided'), { fen, type: typeof fen });
+      return;
+    }
 
     // Avoid duplicate consecutive FENs
-    if (fenStack.length > 0 && fenStack[0] === fen) return;
+    if (fenStack.length > 0 && fenStack[0] === fen) {
+      console.debug(getPrefix('data', 'Duplicate FEN detected, skipping'), {
+        fen: fen.split(' ')[0],
+      });
+      return;
+    }
 
     fenStack.unshift(fen); // Add to beginning (most recent)
     if (fenStack.length > 3) {
-      fenStack.pop(); // Remove oldest if we have more than 3
+      const removed = fenStack.pop(); // Remove oldest if we have more than 3
+      console.debug(getPrefix('data', 'Removed oldest FEN from stack'), {
+        removed: removed.split(' ')[0],
+      });
     }
 
-    console.log(getPrefix('chess', `FEN added to stack. Stack size: ${fenStack.length}`));
+    console.debug(getPrefix('chess', `FEN added to stack. Stack size: ${fenStack.length}`));
+    console.debug(
+      getPrefix('data', 'Current FEN stack'),
+      fenStack.map((f) => f.split(' ')[0])
+    );
     console.log(getPrefix('data', `Latest FEN: ${fen.split(' ')[0]}`)); // Log just the board position part
   }
 
@@ -76,9 +96,25 @@
    * Gets the current FEN from the page and adds it to the stack.
    */
   function captureFen() {
+    console.debug(getPrefix('chess', 'captureFen called'));
+
     const fenInput = document.querySelector('.copyables .pair input.copyable');
+    console.debug(getPrefix('data', 'FEN input element'), {
+      found: !!fenInput,
+      element: fenInput,
+      value: fenInput?.value,
+      valueLength: fenInput?.value?.length,
+    });
+
     if (fenInput && fenInput.value) {
+      console.debug(getPrefix('data', 'Calling addFenToStack with'), { fen: fenInput.value });
       addFenToStack(fenInput.value);
+    } else {
+      console.debug(getPrefix('warning', 'No FEN input found or value is empty'), {
+        inputExists: !!fenInput,
+        hasValue: !!fenInput?.value,
+        value: fenInput?.value,
+      });
     }
   }
 
@@ -87,27 +123,65 @@
    */
   function setupFenTracking() {
     console.log(getPrefix('init', 'Setting up FEN tracking'));
+    console.debug(getPrefix('data', 'setupFenTracking called'), {
+      currentStackSize: fenStack.length,
+      existingObserver: !!fenObserver,
+    });
 
     // Initial FEN capture
+    console.debug(getPrefix('chess', 'Attempting initial FEN capture'));
     captureFen();
 
     // Setup mutation observer for FEN changes
     const fenInput = document.querySelector('.copyables .pair input.copyable');
+    console.debug(getPrefix('data', 'Looking for FEN input'), {
+      found: !!fenInput,
+      selector: '.copyables .pair input.copyable',
+      allCopyables: document.querySelectorAll('.copyables').length,
+      allPairs: document.querySelectorAll('.pair').length,
+      allInputs: document.querySelectorAll('input.copyable').length,
+    });
+
     if (!fenInput) {
-      console.log(getPrefix('warning', 'FEN input not found, retrying in 1 second'));
+      console.debug(getPrefix('warning', 'FEN input not found, retrying in 1 second'));
       setTimeout(setupFenTracking, 1000);
       return;
     }
 
+    console.debug(getPrefix('data', 'Found FEN input, setting up observers'), {
+      element: fenInput,
+      initialValue: fenInput.value,
+      tagName: fenInput.tagName,
+      className: fenInput.className,
+      id: fenInput.id,
+    });
+
     fenObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
+      console.debug(getPrefix('event', 'MutationObserver triggered'), {
+        mutationCount: mutations.length,
+        types: mutations.map((m) => m.type),
+        targets: mutations.map((m) => m.target.tagName || m.target.nodeType),
+      });
+
+      mutations.forEach((mutation, index) => {
+        console.debug(getPrefix('data', `Mutation ${index}`), {
+          type: mutation.type,
+          attributeName: mutation.attributeName,
+          target: mutation.target,
+          oldValue: mutation.oldValue,
+          addedNodes: mutation.addedNodes?.length,
+          removedNodes: mutation.removedNodes?.length,
+        });
+
         if (mutation.type === 'attributes' && mutation.attributeName === 'value') {
+          console.debug(getPrefix('chess', 'FEN value attribute changed, capturing'));
           captureFen();
         }
         // Also watch for any changes in the board area that might indicate a move
         if (mutation.type === 'childList' || mutation.type === 'attributes') {
           const target = mutation.target;
           if (target && (target.classList?.contains('cg-board') || target.closest('.cg-board'))) {
+            console.debug(getPrefix('chess', 'Board area changed, capturing FEN with delay'));
             setTimeout(captureFen, 50); // Small delay to let the FEN update
           }
         }
@@ -115,12 +189,17 @@
     });
 
     // Also listen for input value changes via property changes
+    console.debug(getPrefix('data', 'Setting up property descriptor override'));
     const originalValueSetter = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
       'value'
     ).set;
     Object.defineProperty(fenInput, 'value', {
       set: function (val) {
+        console.debug(getPrefix('data', 'FEN input value setter called'), {
+          oldValue: this.getAttribute('value'),
+          newValue: val,
+        });
         originalValueSetter.call(this, val);
         setTimeout(captureFen, 10); // Small delay to ensure DOM is updated
       },
@@ -134,10 +213,17 @@
       attributes: true,
       attributeFilter: ['value'],
     });
+    console.debug(getPrefix('data', 'Observing FEN input for attribute changes'));
 
     // Also observe the board area for move changes
     const boardElement =
       document.querySelector('.cg-board') || document.querySelector('.main-board');
+    console.debug(getPrefix('data', 'Looking for board element'), {
+      cgBoard: !!document.querySelector('.cg-board'),
+      mainBoard: !!document.querySelector('.main-board'),
+      found: !!boardElement,
+    });
+
     if (boardElement) {
       fenObserver.observe(boardElement, {
         childList: true,
@@ -145,6 +231,7 @@
         attributes: true,
         attributeFilter: ['class', 'style'],
       });
+      console.debug(getPrefix('data', 'Observing board element for changes'));
     }
 
     console.log(getPrefix('success', 'FEN tracking setup completed'));
@@ -155,6 +242,11 @@
    * @returns {object} Object containing the last 3 FEN positions with descriptive labels
    */
   function getFenTrackingData() {
+    console.debug(getPrefix('data', 'getFenTrackingData called'), {
+      stackSize: fenStack.length,
+      stack: fenStack.map((f) => f.split(' ')[0]),
+    });
+
     const result = {
       currentFen: fenStack[0] || null,
       afterUserMoveFen: fenStack[1] || null,
@@ -162,6 +254,7 @@
       stackSize: fenStack.length,
     };
 
+    console.debug(getPrefix('data', 'FEN tracking data result'), result);
     console.log(getPrefix('data', `FEN tracking data: ${result.stackSize} positions in stack`));
     return result;
   }
