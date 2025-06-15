@@ -42,6 +42,130 @@
     return `[${timestamp}] ${emoji}${actionText}:`;
   }
 
+  // --- FEN TRACKING STATE ---
+  /**
+   * LIFO stack to maintain the last 3 FEN positions:
+   * [0] = Most recent (after computer's response)
+   * [1] = After user's move
+   * [2] = Before user's move
+   */
+  let fenStack = [];
+  let fenObserver = null;
+
+  // --- FEN TRACKING FUNCTIONS ---
+  /**
+   * Adds a new FEN position to the stack, maintaining only the last 3 positions.
+   * @param {string} fen - The FEN string to add
+   */
+  function addFenToStack(fen) {
+    if (!fen || typeof fen !== 'string') return;
+
+    // Avoid duplicate consecutive FENs
+    if (fenStack.length > 0 && fenStack[0] === fen) return;
+
+    fenStack.unshift(fen); // Add to beginning (most recent)
+    if (fenStack.length > 3) {
+      fenStack.pop(); // Remove oldest if we have more than 3
+    }
+
+    console.log(getPrefix('chess', `FEN added to stack. Stack size: ${fenStack.length}`));
+    console.log(getPrefix('data', `Latest FEN: ${fen.split(' ')[0]}`)); // Log just the board position part
+  }
+
+  /**
+   * Gets the current FEN from the page and adds it to the stack.
+   */
+  function captureFen() {
+    const fenInput = document.querySelector('.copyables .pair input.copyable');
+    if (fenInput && fenInput.value) {
+      addFenToStack(fenInput.value);
+    }
+  }
+
+  /**
+   * Sets up a mutation observer to track FEN changes in the position.
+   */
+  function setupFenTracking() {
+    console.log(getPrefix('init', 'Setting up FEN tracking'));
+
+    // Initial FEN capture
+    captureFen();
+
+    // Setup mutation observer for FEN changes
+    const fenInput = document.querySelector('.copyables .pair input.copyable');
+    if (!fenInput) {
+      console.log(getPrefix('warning', 'FEN input not found, retrying in 1 second'));
+      setTimeout(setupFenTracking, 1000);
+      return;
+    }
+
+    fenObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'value') {
+          captureFen();
+        }
+        // Also watch for any changes in the board area that might indicate a move
+        if (mutation.type === 'childList' || mutation.type === 'attributes') {
+          const target = mutation.target;
+          if (target && (target.classList?.contains('cg-board') || target.closest('.cg-board'))) {
+            setTimeout(captureFen, 50); // Small delay to let the FEN update
+          }
+        }
+      });
+    });
+
+    // Also listen for input value changes via property changes
+    const originalValueSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value'
+    ).set;
+    Object.defineProperty(fenInput, 'value', {
+      set: function (val) {
+        originalValueSetter.call(this, val);
+        setTimeout(captureFen, 10); // Small delay to ensure DOM is updated
+      },
+      get: function () {
+        return this.getAttribute('value') || '';
+      },
+    });
+
+    // Observe the FEN input for attribute changes
+    fenObserver.observe(fenInput, {
+      attributes: true,
+      attributeFilter: ['value'],
+    });
+
+    // Also observe the board area for move changes
+    const boardElement =
+      document.querySelector('.cg-board') || document.querySelector('.main-board');
+    if (boardElement) {
+      fenObserver.observe(boardElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'style'],
+      });
+    }
+
+    console.log(getPrefix('success', 'FEN tracking setup completed'));
+  }
+
+  /**
+   * Gets the FEN tracking data for use in prompts.
+   * @returns {object} Object containing the last 3 FEN positions with descriptive labels
+   */
+  function getFenTrackingData() {
+    const result = {
+      currentFen: fenStack[0] || null,
+      afterUserMoveFen: fenStack[1] || null,
+      beforeUserMoveFen: fenStack[2] || null,
+      stackSize: fenStack.length,
+    };
+
+    console.log(getPrefix('data', `FEN tracking data: ${result.stackSize} positions in stack`));
+    return result;
+  }
+
   // --- STYLES (Modern Redesign) ---
   // Injects all the necessary CSS for the button and sidebar panel into the page.
   GM_addStyle(`
@@ -425,21 +549,45 @@
     console.log(getPrefix('data', 'Building system prompt with chess context'));
 
     const chessData = extractChessData();
+    const fenData = getFenTrackingData();
+
     if (!chessData) {
       console.log(getPrefix('warning', 'No chess data available for system prompt'));
       return 'You are an AI chess coach. Help the user improve their chess skills with clear, beginner-friendly explanations.';
     }
 
+    let fenContext = '';
+    if (fenData.stackSize > 0) {
+      fenContext = `**POSITION SEQUENCE:**
+- Current Position (after computer's response): ${fenData.currentFen || 'N/A'}`;
+
+      if (fenData.afterUserMoveFen) {
+        fenContext += `
+- After User's Move: ${fenData.afterUserMoveFen}`;
+      }
+
+      if (fenData.beforeUserMoveFen) {
+        fenContext += `
+- Before User's Move: ${fenData.beforeUserMoveFen}`;
+      }
+
+      fenContext += `
+- Total Positions Tracked: ${fenData.stackSize}
+
+`;
+    } else {
+      fenContext = `**CURRENT POSITION:**
+- FEN: ${chessData.fen}
+
+`;
+    }
+
     return `You are an AI chess coach helping a beginner chess player. Here is the current game context:
 
-**CURRENT POSITION DATA:**
-- FEN: ${chessData.fen}
+${fenContext}**MOVE EVALUATION:**
 - Player Side: ${chessData.playerSide}
 - Last Move Evaluation: ${chessData.feedback}
 - Stockfish Analysis: ${chessData.comment}
-
-**GAME HISTORY (PGN):**
-${chessData.pgn}
 
 **YOUR ROLE:**
 You are a patient, knowledgeable chess coach. Provide clear, educational responses that help beginners understand chess concepts. When analyzing positions or moves:
@@ -452,7 +600,14 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
 6. If asked about alternatives, explain the trade-offs in beginner-friendly terms
 7. Always consider the player's side (${chessData.playerSide}) when giving advice
 
-**IMPORTANT:** Base your analysis on the current position (FEN: ${chessData.fen}) and maintain context throughout our conversation. The user can ask follow-up questions, request clarifications, or discuss general chess topics.`;
+**POSITION CONTEXT:**
+${
+  fenData.stackSize > 1
+    ? `You have access to the sequence of the last ${fenData.stackSize} positions, showing the progression from before the user's move, through their move, to the computer's response. Use this context to understand the tactical and strategic flow of the game.`
+    : `You have access to the current position. Focus your analysis on the current state of the game.`
+}
+
+**IMPORTANT:** Base your analysis on the current position and maintain context throughout our conversation. The user can ask follow-up questions, request clarifications, or discuss general chess topics.`;
   }
 
   /**
@@ -768,10 +923,12 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
   function extractChessData() {
     console.log(getPrefix('chess', 'Extracting chess data'));
     const fenInput = document.querySelector('.copyables .pair input.copyable');
+
+    // DEPRECATED: PGN extraction is disabled but code maintained for potential future use
     const pgnTextarea = document.querySelector('.copyables .pgn textarea.copyable');
 
-    if (!fenInput || !pgnTextarea) {
-      console.log(getPrefix('error', 'Could not find FEN or PGN data on page'));
+    if (!fenInput) {
+      console.log(getPrefix('error', 'Could not find FEN data on page'));
       return null;
     }
 
@@ -798,7 +955,10 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
 
     return {
       fen: fenInput.value,
-      pgn: pgnTextarea.value,
+      // DEPRECATED: PGN field maintained for backward compatibility but not actively used
+      pgn: pgnTextarea
+        ? pgnTextarea.value
+        : 'PGN extraction deprecated - using FEN tracking instead',
       feedback,
       comment: commentText,
       playerSide,
@@ -865,7 +1025,7 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     const chessData = extractChessData();
     if (!chessData) {
       addMessageToHistory(
-        'Could not find required chess data (FEN/PGN) on the page to analyze.',
+        'Could not find required chess data (FEN) on the page to analyze.',
         'ai',
         true
       );
@@ -883,7 +1043,10 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
   // --- INITIALIZATION ---
   window.addEventListener('load', () => {
     console.log(getPrefix('init', 'Window loaded, starting initialization'));
-    setTimeout(setupUI, 500); // Wait for Lichess UI to be ready
+    setTimeout(() => {
+      setupUI();
+      setupFenTracking(); // Initialize FEN tracking
+    }, 500); // Wait for Lichess UI to be ready
 
     document.addEventListener('keydown', (event) => {
       const activeEl = document.activeElement;
@@ -904,6 +1067,10 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     if (mutationObserver) {
       mutationObserver.disconnect();
       console.log(getPrefix('success', 'MutationObserver disconnected'));
+    }
+    if (fenObserver) {
+      fenObserver.disconnect();
+      console.log(getPrefix('success', 'FEN observer disconnected'));
     }
   });
 })();
