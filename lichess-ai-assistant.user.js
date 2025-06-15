@@ -119,7 +119,10 @@
   }
 
   /**
-   * Sets up a mutation observer to track FEN changes in the position.
+   * Sets up a mutation observer to track FEN changes by monitoring the chess board.
+   * This approach watches the chess board area for any mutations and then checks
+   * the FEN input value for changes, since Lichess updates the FEN programmatically
+   * without triggering normal DOM events.
    */
   function setupFenTracking() {
     console.log(getPrefix('init', 'Setting up FEN tracking'));
@@ -132,9 +135,22 @@
     console.debug(getPrefix('chess', 'Attempting initial FEN capture'));
     captureFen();
 
-    // Setup mutation observer for FEN changes
+    // Find the chess board area to monitor
+    const chessBoard = document.querySelector('cg-board');
+    console.debug(getPrefix('data', 'Looking for chess board'), {
+      found: !!chessBoard,
+      selector: 'cg-board',
+    });
+
+    if (!chessBoard) {
+      console.debug(getPrefix('warning', 'Chess board not found, retrying in 1 second'));
+      setTimeout(setupFenTracking, 1000);
+      return;
+    }
+
+    // Also verify FEN input exists
     const fenInput = document.querySelector('.copyables .pair input.copyable');
-    console.debug(getPrefix('data', 'Looking for FEN input'), {
+    console.debug(getPrefix('data', 'Verifying FEN input exists'), {
       found: !!fenInput,
       selector: '.copyables .pair input.copyable',
       initialValue: fenInput?.value,
@@ -146,39 +162,52 @@
       return;
     }
 
-    console.debug(getPrefix('data', 'Found FEN input, setting up event listeners'), {
-      element: fenInput,
-      initialValue: fenInput.value,
-      tagName: fenInput.tagName,
-      className: fenInput.className,
+    console.log(
+      getPrefix('success', 'Both chess board and FEN input found, setting up mutation observer')
+    );
+
+    // Store the last known FEN to detect changes
+    let lastKnownFen = fenInput.value;
+    console.debug(getPrefix('data', 'Initial FEN stored'), { lastKnownFen });
+
+    // Create mutation observer to watch chess board for any changes
+    fenObserver = new MutationObserver((mutations) => {
+      console.debug(getPrefix('event', 'Chess board mutation detected'), {
+        mutationCount: mutations.length,
+        mutationTypes: mutations.map((m) => m.type),
+      });
+
+      // On any chess board change, immediately check FEN input for changes
+      const currentFen = fenInput.value;
+      console.debug(getPrefix('chess', 'Checking FEN after board mutation'), {
+        lastKnownFen: lastKnownFen?.split(' ')[0] + '...',
+        currentFen: currentFen?.split(' ')[0] + '...',
+        changed: currentFen !== lastKnownFen,
+      });
+
+      if (currentFen && currentFen !== lastKnownFen) {
+        console.log(getPrefix('success', 'FEN change detected via board mutation'));
+        lastKnownFen = currentFen;
+
+        // Add FEN to stack with proper timing context
+        const added = addFenToStack(currentFen);
+        if (added) {
+          console.log(getPrefix('chess', 'FEN successfully added to tracking stack'));
+        }
+      }
     });
 
-    // Try multiple event-based approaches since property descriptor isn't working
-    console.debug(getPrefix('data', 'Setting up event listeners for FEN changes'));
-
-    // Method 1: Standard input events
-    fenInput.addEventListener('input', () => {
-      console.debug(getPrefix('event', 'Input event triggered'));
-      captureFen();
+    // Watch the chess board area for any mutations
+    fenObserver.observe(chessBoard, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      characterData: true,
     });
 
-    fenInput.addEventListener('change', () => {
-      console.debug(getPrefix('event', 'Change event triggered'));
-      captureFen();
-    });
-
-    // Method 2: Focus events (in case value changes when field gains/loses focus)
-    fenInput.addEventListener('focus', () => {
-      console.debug(getPrefix('event', 'Focus event triggered'));
-      setTimeout(captureFen, 10);
-    });
-
-    fenInput.addEventListener('blur', () => {
-      console.debug(getPrefix('event', 'Blur event triggered'));
-      setTimeout(captureFen, 10);
-    });
-
-    console.log(getPrefix('success', 'FEN tracking setup completed - event listener approach'));
+    console.log(
+      getPrefix('success', 'FEN tracking setup completed - chess board mutation observer active')
+    );
   }
 
   /**
