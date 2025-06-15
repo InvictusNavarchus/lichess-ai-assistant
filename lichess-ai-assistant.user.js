@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess AI Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.4.0
+// @version      0.5.0
 // @description  AI-powered chess coach with a redesigned, modern chat interface.
 // @author       Invictus Navarchus & Gemini
 // @match        https://lichess.org/analysis*
@@ -114,6 +114,30 @@
         }
         .ai-helper-button:hover {
             background: var(--ai-accent-hover);
+            transform: translateY(-1px);
+            box-shadow: var(--ai-shadow);
+        }
+
+        /* Copy to Clipboard Button */
+        .ai-copy-button {
+            background: var(--ai-bg-tertiary);
+            color: var(--ai-text-primary);
+            border: 1px solid var(--ai-border-color);
+            padding: 0 16px;
+            height: 36px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            margin-left: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+        }
+        .ai-copy-button:hover {
+            background: var(--ai-accent-primary);
+            color: var(--ai-send-btn-color);
             transform: translateY(-1px);
             box-shadow: var(--ai-shadow);
         }
@@ -334,6 +358,7 @@
 
   // --- UI ELEMENTS ---
   let aiButton;
+  let copyButton;
   let aiCoachPanel;
   let mutationObserver;
   let conversationHistory = [];
@@ -635,6 +660,18 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
             <span>Ask AI</span>`;
     aiButton.onclick = handleAskAIShortcut;
 
+    // Create the "Copy to Clipboard" button
+    copyButton = document.createElement('button');
+    copyButton.className = 'ai-copy-button';
+    copyButton.title = 'Copy chess analysis prompt to clipboard for use with any LLM';
+    copyButton.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
+            </svg>
+            <span>Copy Prompt</span>`;
+    copyButton.onclick = handleCopyToClipboard;
+
     // Create the AI Chat interface
     aiCoachPanel = document.createElement('fieldset');
     aiCoachPanel.className = 'analyse__wiki toggle-box toggle-box--toggle toggle-box--ready';
@@ -666,9 +703,12 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
 
     // Inject UI elements
     const controlsContainer = document.querySelector('.analyse__controls .features');
-    controlsContainer
-      ? controlsContainer.appendChild(aiButton)
-      : console.log(getPrefix('error', 'Could not find controls container.'));
+    if (controlsContainer) {
+      controlsContainer.appendChild(aiButton);
+      controlsContainer.appendChild(copyButton);
+    } else {
+      console.log(getPrefix('error', 'Could not find controls container.'));
+    }
 
     const sidebar = document.querySelector('.analyse__side');
     if (sidebar) {
@@ -728,6 +768,47 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     }
 
     sendMessageToAI(message);
+  }
+
+  /**
+   * Copies the chess analysis prompt to clipboard for use with external LLMs.
+   */
+  async function handleCopyToClipboard() {
+    console.log(getPrefix('event', 'Copy to clipboard triggered'));
+
+    const chessData = extractChessData();
+    if (!chessData) {
+      console.log(getPrefix('error', 'Could not extract chess data for clipboard'));
+      return;
+    }
+
+    // Build the same system prompt and user message that would be sent to AI
+    const systemPrompt = buildSystemPrompt();
+    const userPrompt = buildPrompt(chessData);
+
+    // Combine system and user prompts
+    const fullPrompt = `${systemPrompt}\n\nUser: ${userPrompt}`;
+
+    try {
+      await navigator.clipboard.writeText(fullPrompt);
+      console.log(getPrefix('success', 'Text copied to clipboard'));
+
+      // Visual feedback - temporarily change button text
+      const originalText = copyButton.innerHTML;
+      copyButton.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span>Copied!</span>`;
+
+      setTimeout(() => {
+        if (copyButton) {
+          copyButton.innerHTML = originalText;
+        }
+      }, 2000);
+    } catch (err) {
+      console.log(getPrefix('error', `Failed to copy to clipboard: ${err.message}`));
+    }
   }
 
   /**
