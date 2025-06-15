@@ -456,20 +456,7 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
   async function sendMessageToAI(message) {
     console.log(getPrefix('api', 'Sending message to AI'));
 
-    // Add user message to history
-    addMessageToHistory(message, 'user');
-
-    // Show loading in AI message
-    const tempLoadingId = 'ai-loading-' + Date.now();
-    conversationHistory.push({
-      role: 'ai',
-      content: '<div class="ai-loader"><div class="spinner"></div><span>Thinking...</span></div>',
-      timestamp: new Date(),
-      id: tempLoadingId,
-    });
-    updateChatUI();
-
-    // Build comprehensive prompt with system context and conversation history
+    // Build conversation context BEFORE adding the current message
     const systemPrompt = buildSystemPrompt();
     const conversationContext = conversationHistory
       .filter((msg) => (msg.role === 'user' || msg.role === 'ai') && !msg.id) // Exclude loading messages
@@ -482,6 +469,19 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     } else {
       fullPrompt = `${systemPrompt}\n\nUser: ${message}`;
     }
+
+    // Add user message to history AFTER building the prompt
+    addMessageToHistory(message, 'user');
+
+    // Show loading in AI message
+    const tempLoadingId = 'ai-loading-' + Date.now();
+    conversationHistory.push({
+      role: 'ai',
+      content: '<div class="ai-loader"><div class="spinner"></div><span>Thinking...</span></div>',
+      timestamp: new Date(),
+      id: tempLoadingId,
+    });
+    updateChatUI();
 
     const encodedPrompt = encodeURIComponent(fullPrompt);
     const baseEndpoint = 'https://api.zpi.my.id/v1/ai/copilot';
