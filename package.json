@@ -6,13 +6,15 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "format": "pretty-quick --staged",
-    "format:all": "prettier --write ."
+    "format:all": "prettier --write .",
+    "prepare": "husky"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.10.0",
   "devDependencies": {
+    "husky": "^9.1.7",
     "prettier": "^3.5.3",
     "pretty-quick": "^4.2.2"
   }
