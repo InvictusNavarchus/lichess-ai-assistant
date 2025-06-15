@@ -146,68 +146,91 @@
       return;
     }
 
-    console.debug(getPrefix('data', 'Found FEN input, setting up focused observer'), {
+    console.debug(getPrefix('data', 'Found FEN input, setting up property override only'), {
       element: fenInput,
       initialValue: fenInput.value,
       tagName: fenInput.tagName,
       className: fenInput.className,
     });
 
-    // FOCUSED OBSERVER: Only watch the FEN input element and its parent container
+    // Skip mutation observer entirely - it doesn't catch programmatic value changes
+    console.debug(getPrefix('data', 'Skipping mutation observer - focusing on property override'));
+
+    // Try watching the parent element for child changes (in case input is replaced)
+    const parentElement = fenInput.parentElement;
+    console.debug(getPrefix('data', 'Setting up parent observer'), {
+      parent: parentElement,
+      parentClass: parentElement?.className,
+    });
+
     fenObserver = new MutationObserver((mutations) => {
-      console.debug(getPrefix('event', 'FEN-focused MutationObserver triggered'), {
+      console.debug(getPrefix('event', 'Parent MutationObserver triggered'), {
         mutationCount: mutations.length,
       });
 
       mutations.forEach((mutation, index) => {
-        console.debug(getPrefix('data', `FEN Mutation ${index}`), {
+        console.debug(getPrefix('data', `Parent Mutation ${index}`), {
           type: mutation.type,
-          attributeName: mutation.attributeName,
-          target: mutation.target.tagName,
-          targetValue: mutation.target.value,
+          target: mutation.target,
+          addedNodes: mutation.addedNodes?.length,
+          removedNodes: mutation.removedNodes?.length,
         });
 
-        // Only care about value attribute changes on the FEN input
-        if (
-          mutation.type === 'attributes' &&
-          mutation.attributeName === 'value' &&
-          mutation.target === fenInput
-        ) {
-          console.debug(getPrefix('chess', 'FEN input value changed directly'));
+        // Check if input element was replaced or content changed
+        setTimeout(() => {
+          console.debug(getPrefix('chess', 'Checking FEN after parent mutation'));
           captureFen();
-        }
+        }, 50);
       });
     });
 
-    // Watch only the FEN input element for value changes
-    fenObserver.observe(fenInput, {
-      attributes: true,
-      attributeFilter: ['value'],
-    });
-    console.debug(getPrefix('data', 'Observing ONLY FEN input for value changes'));
+    if (parentElement) {
+      fenObserver.observe(parentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+      });
+      console.debug(getPrefix('data', 'Observing parent element for changes'));
+    }
 
-    // Also override the value property to catch programmatic changes
+    // Override the value property to catch programmatic changes - THIS IS THE KEY
     console.debug(getPrefix('data', 'Setting up property descriptor override'));
     const originalValueSetter = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
       'value'
     ).set;
+    const originalValueGetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value'
+    ).get;
 
-    Object.defineProperty(fenInput, 'value', {
-      set: function (val) {
-        console.debug(getPrefix('data', 'FEN input value setter intercepted'), {
-          oldValue: this.getAttribute('value'),
-          newValue: val,
-        });
-        originalValueSetter.call(this, val);
-        setTimeout(captureFen, 10);
-      },
-      get: function () {
-        return this.getAttribute('value') || '';
-      },
-    });
+    // Test that we can override the property
+    try {
+      Object.defineProperty(fenInput, 'value', {
+        configurable: true,
+        set: function (val) {
+          console.debug(getPrefix('data', 'FEN input value setter intercepted'), {
+            oldValue: originalValueGetter.call(this),
+            newValue: val,
+          });
+          originalValueSetter.call(this, val);
+          setTimeout(captureFen, 10);
+        },
+        get: function () {
+          return originalValueGetter.call(this);
+        },
+      });
+      console.debug(getPrefix('success', 'Property descriptor override successful'));
 
-    console.log(getPrefix('success', 'FEN tracking setup completed - focused approach'));
+      // Test the override
+      console.debug(getPrefix('data', 'Testing property override'));
+      const testValue = fenInput.value;
+      fenInput.value = testValue; // This should trigger our setter
+    } catch (error) {
+      console.debug(getPrefix('error', 'Property descriptor override failed'), error);
+    }
+
+    console.log(getPrefix('success', 'FEN tracking setup completed - property override approach'));
   }
 
   /**
