@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess AI Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.5.0
+// @version      0.4.0
 // @description  AI-powered chess coach with a redesigned, modern chat interface.
 // @author       Invictus Navarchus & Gemini
 // @match        https://lichess.org/analysis*
@@ -118,29 +118,7 @@
             box-shadow: var(--ai-shadow);
         }
 
-        /* Copy to Clipboard Button */
-        .ai-copy-button {
-            background: var(--ai-bg-tertiary);
-            color: var(--ai-text-primary);
-            border: 1px solid var(--ai-border-color);
-            padding: 0 16px;
-            height: 36px;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            margin-left: 10px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-        }
-        .ai-copy-button:hover {
-            background: var(--ai-accent-primary);
-            color: var(--ai-send-btn-color);
-            transform: translateY(-1px);
-            box-shadow: var(--ai-shadow);
-        }
+
 
         /* Main AI Panel */
         #ai-coach-field {
@@ -357,8 +335,6 @@
     `);
 
   // --- UI ELEMENTS ---
-  let aiButton;
-  let copyButton;
   let aiCoachPanel;
   let mutationObserver;
   let conversationHistory = [];
@@ -649,29 +625,6 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
   function setupUI() {
     console.log(getPrefix('init', 'Setting up UI'));
 
-    // Create the "Ask AI" button
-    aiButton = document.createElement('button');
-    aiButton.className = 'ai-helper-button';
-    aiButton.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 3c-1.2 0-2.4.6-3 1.7A3.4 3.4 0 004 8c-1.7 0-3 1.3-3 3s1.3 3 3 3c.6 0 1.2-.2 1.7-.5A3.4 3.4 0 008 20c0 1.7 1.3 3 3 3s3-1.3 3-3c0-.6-.2-1.2-.5-1.7A3.4 3.4 0 0020 14c1.7 0 3-1.3 3-3s-1.3-3-3-3c-.6 0-1.2.2-1.7.5A3.4 3.4 0 0014 4c0-1.7-1.3-3-3-3z"></path>
-                <path d="M12 5v14"></path><path d="M5 12h14"></path>
-            </svg>
-            <span>Ask AI</span>`;
-    aiButton.onclick = handleAskAIShortcut;
-
-    // Create the "Copy to Clipboard" button
-    copyButton = document.createElement('button');
-    copyButton.className = 'ai-copy-button';
-    copyButton.title = 'Copy chess analysis prompt to clipboard for use with any LLM';
-    copyButton.innerHTML = `
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
-            </svg>
-            <span>Copy Prompt</span>`;
-    copyButton.onclick = handleCopyToClipboard;
-
     // Create the AI Chat interface
     aiCoachPanel = document.createElement('fieldset');
     aiCoachPanel.className = 'analyse__wiki toggle-box toggle-box--toggle toggle-box--ready';
@@ -694,6 +647,9 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
                         <button class="ai-chat-shortcut-btn" id="ai-ask-position-btn">
                             <span class="icon">💡</span> Explain Position
                         </button>
+                        <button class="ai-chat-shortcut-btn" id="ai-copy-prompt-btn">
+                            <span class="icon">📋</span> Copy Prompt
+                        </button>
                         <button class="ai-chat-shortcut-btn" id="ai-clear-chat-btn">
                             <span class="icon">🗑️</span> Clear Chat
                         </button>
@@ -702,14 +658,6 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
             </div>`;
 
     // Inject UI elements
-    const controlsContainer = document.querySelector('.analyse__controls .features');
-    if (controlsContainer) {
-      controlsContainer.appendChild(aiButton);
-      controlsContainer.appendChild(copyButton);
-    } else {
-      console.log(getPrefix('error', 'Could not find controls container.'));
-    }
-
     const sidebar = document.querySelector('.analyse__side');
     if (sidebar) {
       sidebar.appendChild(aiCoachPanel);
@@ -730,10 +678,12 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     const chatInput = document.getElementById('ai-chat-input');
     const sendButton = document.getElementById('ai-chat-send-btn');
     const askPositionButton = document.getElementById('ai-ask-position-btn');
+    const copyPromptButton = document.getElementById('ai-copy-prompt-btn');
     const clearChatButton = document.getElementById('ai-clear-chat-btn');
 
     sendButton?.addEventListener('click', handleSendMessage);
     askPositionButton?.addEventListener('click', handleAskAIShortcut);
+    copyPromptButton?.addEventListener('click', handleCopyToClipboard);
     clearChatButton?.addEventListener('click', () => {
       console.log(getPrefix('event', 'Clear chat button clicked'));
       conversationHistory = [];
