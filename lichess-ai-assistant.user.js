@@ -50,6 +50,7 @@
    * [2] = Before user's move
    */
   let fenStack = [];
+  let originalValueDescriptors = null;
 
   // --- FEN TRACKING FUNCTIONS ---
   /**
@@ -137,21 +138,43 @@
       'value'
     ).get;
 
+    if (!originalValueSetter || !originalValueGetter) {
+      console.error(getPrefix('error', 'Failed to get original value descriptors'));
+      return;
+    }
+
+    // Store original descriptors for cleanup
+    originalValueDescriptors = {
+      set: originalValueSetter,
+      get: originalValueGetter,
+      configurable: true,
+      enumerable: true,
+    };
+
     try {
-      Object.defineProperty(fenInput, 'value', {
+      // Store reference to our specific FEN input element
+      const targetFenInput = fenInput;
+
+      // Override the prototype setter to intercept all input value changes
+      Object.defineProperty(HTMLInputElement.prototype, 'value', {
         configurable: true,
+        enumerable: true,
         set: function (val) {
-          console.debug(getPrefix('data', 'FEN input value setter intercepted'), {
-            oldValue: originalValueGetter.call(this),
-            newValue: val,
-          });
+          // Call the original setter first
           originalValueSetter.call(this, val);
-          // Delay slightly to ensure the value is set before processing
-          setTimeout(() => {
-            if (val && typeof val === 'string') {
+
+          // Only process if this is our specific FEN input element
+          if (this === targetFenInput && val && typeof val === 'string') {
+            console.debug(getPrefix('data', 'FEN input value setter intercepted'), {
+              oldValue: this.getAttribute('value') || 'undefined',
+              newValue: val,
+            });
+
+            // Delay slightly to ensure the value is set before processing
+            setTimeout(() => {
               addFenToStack(val);
-            }
-          }, 10);
+            }, 10);
+          }
         },
         get: function () {
           return originalValueGetter.call(this);
@@ -1098,6 +1121,16 @@ ${
     if (mutationObserver) {
       mutationObserver.disconnect();
       console.log(getPrefix('success', 'MutationObserver disconnected'));
+    }
+
+    // Restore original HTMLInputElement.prototype.value descriptor
+    if (originalValueDescriptors) {
+      try {
+        Object.defineProperty(HTMLInputElement.prototype, 'value', originalValueDescriptors);
+        console.log(getPrefix('success', 'Original value descriptor restored'));
+      } catch (error) {
+        console.error(getPrefix('error', 'Failed to restore original value descriptor'), error);
+      }
     }
   });
 })();
