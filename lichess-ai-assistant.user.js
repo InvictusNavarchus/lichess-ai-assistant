@@ -744,18 +744,21 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
       console.log(getPrefix('success', 'Text copied to clipboard'));
 
       // Visual feedback - temporarily change button text
-      const originalText = copyButton.innerHTML;
-      copyButton.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="20 6 9 17 4 12"></polyline>
-        </svg>
-        <span>Copied!</span>`;
+      const copyButton = document.getElementById('ai-copy-prompt-btn');
+      if (copyButton) {
+        const originalText = copyButton.innerHTML;
+        copyButton.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>Copied!</span>`;
 
-      setTimeout(() => {
-        if (copyButton) {
-          copyButton.innerHTML = originalText;
-        }
-      }, 2000);
+        setTimeout(() => {
+          if (copyButton) {
+            copyButton.innerHTML = originalText;
+          }
+        }, 2000);
+      }
     } catch (err) {
       console.log(getPrefix('error', `Failed to copy to clipboard: ${err.message}`));
     }
