@@ -345,7 +345,7 @@
    * @type {Array<string>}
    */
   let fenStack = [];
-  let boardMutationObserver;
+  let boardMutationObserver; // Observer for move list changes
   let lastKnownFen = null;
 
   /**
@@ -387,14 +387,20 @@
   }
 
   /**
-   * Sets up a MutationObserver to watch for board changes by monitoring last-move squares.
+   * Sets up a MutationObserver to watch for move changes by monitoring the moves list.
    */
   function setupBoardMutationObserver() {
-    console.log(getPrefix('event', 'Setting up board MutationObserver for FEN tracking'));
+    console.log(getPrefix('event', 'Setting up MutationObserver for move list tracking'));
 
-    const boardContainer = document.querySelector('cg-board');
-    if (!boardContainer) {
-      console.log(getPrefix('error', 'Could not find cg-board for FEN tracking'));
+    const movesContainer = document.querySelector('.analyse__moves .tview2');
+    if (!movesContainer) {
+      console.log(
+        getPrefix('warning', 'Could not find moves container for FEN tracking, will retry')
+      );
+      // Retry after a longer delay
+      setTimeout(() => {
+        setupBoardMutationObserver();
+      }, 2000);
       return;
     }
 
@@ -402,41 +408,47 @@
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['class', 'style'],
+      attributeFilter: ['class'],
     };
 
     boardMutationObserver = new MutationObserver((mutationsList) => {
-      let lastMoveChanged = false;
+      let movesChanged = false;
 
       for (const mutation of mutationsList) {
-        // Check for changes in last-move squares
-        if (
-          mutation.type === 'attributes' &&
-          mutation.target.classList &&
-          mutation.target.classList.contains('last-move')
-        ) {
-          lastMoveChanged = true;
-          break;
+        // Check for changes in move elements or their classes (especially 'active' class)
+        if (mutation.type === 'attributes' && mutation.target.tagName === 'MOVE') {
+          if (mutation.attributeName === 'class') {
+            console.log(
+              getPrefix('event', `Move element class changed: ${mutation.target.className}`)
+            );
+            movesChanged = true;
+            break;
+          }
         }
 
-        // Check for added/removed last-move squares
+        // Check for added/removed move elements
         if (mutation.type === 'childList') {
           for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
-            if (
-              node.nodeType === Node.ELEMENT_NODE &&
-              node.classList &&
-              node.classList.contains('last-move')
-            ) {
-              lastMoveChanged = true;
-              break;
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              // Check if the node is a move element or contains move elements
+              if (node.tagName === 'MOVE' || (node.querySelector && node.querySelector('move'))) {
+                console.log(
+                  getPrefix(
+                    'event',
+                    `Move element ${mutation.addedNodes.length > 0 ? 'added' : 'removed'}`
+                  )
+                );
+                movesChanged = true;
+                break;
+              }
             }
           }
-          if (lastMoveChanged) break;
+          if (movesChanged) break;
         }
       }
 
-      if (lastMoveChanged) {
-        console.log(getPrefix('event', 'Last-move squares changed, checking FEN'));
+      if (movesChanged) {
+        console.log(getPrefix('event', 'Move list changed, checking FEN'));
 
         // Small delay to ensure FEN is updated
         setTimeout(() => {
@@ -448,8 +460,8 @@
       }
     });
 
-    boardMutationObserver.observe(boardContainer, config);
-    console.log(getPrefix('success', 'Board MutationObserver setup complete'));
+    boardMutationObserver.observe(movesContainer, config);
+    console.log(getPrefix('success', 'Move list MutationObserver setup complete'));
 
     // Initialize with current position
     const initialFen = getCurrentFen();
@@ -1042,7 +1054,7 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     setTimeout(() => {
       setupUI();
       setupBoardMutationObserver();
-    }, 500); // Wait for Lichess UI to be ready
+    }, 1000); // Increased delay to ensure moves container is ready
 
     document.addEventListener('keydown', (event) => {
       const activeEl = document.activeElement;
@@ -1066,7 +1078,7 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     }
     if (boardMutationObserver) {
       boardMutationObserver.disconnect();
-      console.log(getPrefix('success', 'Board MutationObserver disconnected'));
+      console.log(getPrefix('success', 'Move list MutationObserver disconnected'));
     }
   });
 })();
