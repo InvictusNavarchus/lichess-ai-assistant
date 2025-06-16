@@ -639,6 +639,53 @@ You are a patient and knowledgeable coach. Your goal is to provide educational r
   }
 
   /**
+   * Builds a simplified prompt for CustomGPT that excludes system instructions.
+   * This assumes the CustomGPT already has the system prompt configured.
+   * @returns {string} The simplified prompt with just the game context and user message.
+   */
+  function buildCustomGPTPrompt() {
+    console.log(getPrefix('data', 'Building CustomGPT prompt'));
+
+    const chessData = extractChessData();
+    if (!chessData) {
+      console.log(getPrefix('warning', 'No chess data available for CustomGPT prompt'));
+      return 'No chess data available. Please ensure you are on a Lichess analysis page.';
+    }
+
+    const latestFen = getLatestFen();
+    const previousFen = getPreviousFen();
+    const allFens = getAllFens();
+
+    // Construct the FEN history part
+    let fenContext = `- **ANALYZED FEN (Stockfish evaluated this position):** ${previousFen || 'Not available'}`;
+    if (latestFen) {
+      fenContext += `\n- **Current FEN (after opponent's response):** ${latestFen}`;
+    }
+    if (allFens.length > 2) {
+      const oldestFen = allFens[allFens.length - 3];
+      fenContext += `\n- **FEN (two moves ago):** ${oldestFen}`;
+    }
+
+    const userPrompt = buildPrompt(chessData);
+
+    return `**GAME STATE:**
+- **Player to Analyze For:** ${chessData.playerSide}
+- **Lichess's Evaluation of Last Move:** "${chessData.feedback}"
+- **Lichess's Comment on Last Move:** ${chessData.comment}
+
+**POSITION HISTORY (from FEN stack):**
+This stack shows the sequence of positions leading to the current state. Use this to understand the impact of the most recent move.
+${fenContext}
+
+**FULL GAME HISTORY (PGN):**
+${chessData.pgn}
+
+---
+
+${userPrompt}`;
+  }
+
+  /**
    * Sends a message to the AI and handles the response.
    * @param {string} message - The message to send
    */
@@ -833,6 +880,9 @@ You are a patient and knowledgeable coach. Your goal is to provide educational r
                         <button class="ai-chat-shortcut-btn" id="ai-copy-prompt-btn">
                             <span class="icon">📋</span> Copy Prompt
                         </button>
+                        <button class="ai-chat-shortcut-btn" id="ai-copy-custom-gpt-btn">
+                            <span class="icon">🤖</span> Copy for GPT
+                        </button>
                         <button class="ai-chat-shortcut-btn" id="ai-clear-chat-btn">
                             <span class="icon">🗑️</span> Clear Chat
                         </button>
@@ -861,11 +911,13 @@ You are a patient and knowledgeable coach. Your goal is to provide educational r
     const sendButton = document.getElementById('ai-chat-send-btn');
     const askPositionButton = document.getElementById('ai-ask-position-btn');
     const copyPromptButton = document.getElementById('ai-copy-prompt-btn');
+    const copyCustomGPTButton = document.getElementById('ai-copy-custom-gpt-btn');
     const clearChatButton = document.getElementById('ai-clear-chat-btn');
 
     sendButton?.addEventListener('click', handleSendMessage);
     askPositionButton?.addEventListener('click', handleAskAIShortcut);
     copyPromptButton?.addEventListener('click', handleCopyToClipboard);
+    copyCustomGPTButton?.addEventListener('click', handleCopyCustomGPTPrompt);
     clearChatButton?.addEventListener('click', () => {
       console.log(getPrefix('event', 'Clear chat button clicked'));
       conversationHistory = [];
@@ -933,6 +985,35 @@ You are a patient and knowledgeable coach. Your goal is to provide educational r
       }
     } catch (err) {
       console.log(getPrefix('error', `Failed to copy to clipboard: ${err.message}`));
+    }
+  }
+
+  /**
+   * Copies the simplified CustomGPT prompt to clipboard.
+   * This version excludes system instructions and focuses on game context.
+   */
+  async function handleCopyCustomGPTPrompt() {
+    console.log(getPrefix('event', 'Copy CustomGPT prompt triggered'));
+
+    const customGPTPrompt = buildCustomGPTPrompt();
+
+    try {
+      await navigator.clipboard.writeText(customGPTPrompt);
+      console.log(getPrefix('success', 'CustomGPT prompt copied to clipboard'));
+
+      // Visual feedback
+      const copyButton = document.getElementById('ai-copy-custom-gpt-btn');
+      if (copyButton) {
+        const originalText = copyButton.innerHTML;
+        copyButton.innerHTML = `<span>✅ Copied!</span>`;
+        setTimeout(() => {
+          copyButton.innerHTML = originalText;
+        }, 2000);
+      }
+    } catch (err) {
+      console.log(
+        getPrefix('error', `Failed to copy CustomGPT prompt to clipboard: ${err.message}`)
+      );
     }
   }
 
