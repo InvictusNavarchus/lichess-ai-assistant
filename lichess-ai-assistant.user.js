@@ -312,7 +312,97 @@
       console.debug(getPrefix('error', 'Property descriptor override failed'), error);
     }
 
-    console.log(getPrefix('success', 'FEN tracking setup completed - property override approach')); // ADDITIONAL DEEP INVESTIGATION: Monitor all possible update methods
+    console.log(getPrefix('success', 'FEN tracking setup completed - property override approach'));
+
+    // VERIFICATION: Test if our monitors are actually working and check object state
+    console.debug(getPrefix('data', 'VERIFICATION: Testing monitor effectiveness'));
+
+    // Check if objects are frozen/sealed
+    const objectState = {
+      fenInputFrozen: Object.isFrozen(fenInput),
+      fenInputSealed: Object.isSealed(fenInput),
+      fenInputExtensible: Object.isExtensible(fenInput),
+      prototypeExtensible: Object.isExtensible(HTMLInputElement.prototype),
+      prototypeFrozen: Object.isFrozen(HTMLInputElement.prototype),
+      prototypeSealed: Object.isSealed(HTMLInputElement.prototype),
+    };
+
+    console.debug(getPrefix('data', 'Object state analysis'), objectState);
+
+    // Test our setAttribute override
+    console.debug(getPrefix('data', 'VERIFICATION: Testing setAttribute override'));
+    try {
+      fenInput.setAttribute('data-test', 'verification');
+      console.debug(getPrefix('success', 'setAttribute override is working'));
+    } catch (e) {
+      console.debug(getPrefix('error', 'setAttribute override failed'), e);
+    }
+
+    // Test if we can access the current descriptor after our override
+    const currentDescriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    console.debug(getPrefix('data', 'Current prototype descriptor after override'), {
+      hasSet: !!currentDescriptor?.set,
+      hasGet: !!currentDescriptor?.get,
+      isOurSetter: currentDescriptor?.set?.toString().includes('Custom setter called'),
+      configurable: currentDescriptor?.configurable,
+      enumerable: currentDescriptor?.enumerable,
+    });
+
+    // Check if someone else is overriding our overrides
+    const descriptorCheck = Object.getOwnPropertyDescriptor(fenInput, 'value');
+    console.debug(getPrefix('data', 'Element-specific descriptor check'), {
+      hasOwnDescriptor: !!descriptorCheck,
+      descriptor: descriptorCheck,
+    });
+
+    // Test direct property access patterns
+    console.debug(getPrefix('data', 'VERIFICATION: Testing property access patterns'));
+    const testPatterns = {
+      directValue: fenInput.value,
+      getAttribute: fenInput.getAttribute('value'),
+      getProperty: fenInput.style?.getPropertyValue ? 'supported' : 'not supported',
+      dataset: fenInput.dataset ? Object.keys(fenInput.dataset) : 'no dataset',
+    };
+    console.debug(getPrefix('data', 'Property access patterns'), testPatterns);
+
+    // Add more aggressive test to see if our setter is really being called
+    console.debug(getPrefix('data', 'VERIFICATION: Aggressive setter test'));
+    let setterCallCount = 0;
+
+    // Temporarily replace our setter with a counting version
+    const testDescriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    if (testDescriptor?.set) {
+      const originalTestSetter = testDescriptor.set;
+      Object.defineProperty(HTMLInputElement.prototype, 'value', {
+        configurable: true,
+        enumerable: testDescriptor.enumerable,
+        set: function (val) {
+          setterCallCount++;
+          console.debug(getPrefix('data', `AGGRESSIVE TEST: Setter called #${setterCallCount}`), {
+            value: val,
+            element: this,
+            isTargetElement: this === fenInput,
+          });
+          return originalTestSetter.call(this, val);
+        },
+        get: testDescriptor.get,
+      });
+    }
+
+    // Test the aggressive setter
+    fenInput.value = fenInput.value + '_AGGRESSIVE_TEST';
+    setTimeout(() => {
+      console.debug(getPrefix('data', 'Aggressive test results'), {
+        setterCallCount: setterCallCount,
+        currentValue: fenInput.value,
+      });
+
+      // Restore the original value
+      const originalValue = fenInput.value.replace('_AGGRESSIVE_TEST', '');
+      fenInput.value = originalValue;
+    }, 100);
+
+    // ADDITIONAL DEEP INVESTIGATION: Monitor all possible update methods
     console.debug(getPrefix('data', 'Setting up comprehensive FEN monitoring'));
 
     // Monitor ALL DOM manipulation methods that could affect input values
@@ -490,6 +580,45 @@
     }
 
     console.debug(getPrefix('data', 'Comprehensive FEN monitoring setup complete'));
+
+    // FINAL VERIFICATION: Add element identity tracking
+    let elementIdentityCheck = 0;
+    const originalElement = fenInput;
+    const originalParent = fenInput.parentElement;
+
+    const verifyElementIntegrity = () => {
+      elementIdentityCheck++;
+      const currentElement = document.querySelector('.copyables .pair input.copyable');
+      const currentParent = currentElement?.parentElement;
+
+      const integrityReport = {
+        checkNumber: elementIdentityCheck,
+        elementChanged: currentElement !== originalElement,
+        parentChanged: currentParent !== originalParent,
+        elementExists: !!currentElement,
+        currentValue: currentElement?.value,
+        originalValue: originalElement?.value,
+        sameValue: currentElement?.value === originalElement?.value,
+        elementId: currentElement?.id || 'no-id',
+        elementClasses: currentElement?.className || 'no-classes',
+      };
+
+      if (integrityReport.elementChanged) {
+        console.debug(getPrefix('warning', 'ELEMENT REPLACED DETECTED!'), integrityReport);
+      } else if (!integrityReport.sameValue) {
+        console.debug(getPrefix('warning', 'VALUE CHANGED WITHOUT INTERCEPTION!'), integrityReport);
+      }
+
+      if (elementIdentityCheck <= 5) {
+        // Only first 5 checks to avoid spam
+        console.debug(getPrefix('data', 'Element integrity check'), integrityReport);
+      }
+    };
+
+    // Check every 2 seconds for the first 10 seconds
+    for (let i = 1; i <= 5; i++) {
+      setTimeout(verifyElementIntegrity, i * 2000);
+    }
   }
 
   /**
