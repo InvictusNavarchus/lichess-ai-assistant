@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess AI Assistant
 // @namespace    http://tampermonkey.net/
-// @version      0.4.0
+// @version      0.5.0
 // @description  AI-powered chess coach with FEN stack context and a redesigned, modern chat interface.
 // @author       Invictus Navarchus & Gemini
 // @match        https://lichess.org/analysis*
