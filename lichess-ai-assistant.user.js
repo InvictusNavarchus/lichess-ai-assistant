@@ -168,6 +168,7 @@
             element: this,
             isTarget: this === targetFenInput,
             value: val,
+            stackTrace: new Error().stack.split('\n').slice(1, 4), // Get calling stack
           });
 
           // Call the original setter first
@@ -193,6 +194,64 @@
 
       // Override the prototype setter to intercept all input value changes
       Object.defineProperty(HTMLInputElement.prototype, 'value', newDescriptor);
+
+      // ADDITIONAL MONITORING: Override setAttribute to catch attribute changes
+      const originalSetAttribute = targetFenInput.setAttribute.bind(targetFenInput);
+      targetFenInput.setAttribute = function (name, value) {
+        console.debug(getPrefix('data', 'setAttribute called on FEN input'), {
+          attribute: name,
+          value: value,
+          stackTrace: new Error().stack.split('\n').slice(1, 3),
+        });
+
+        if (name === 'value' && value && typeof value === 'string') {
+          console.debug(getPrefix('data', 'FEN input setAttribute value intercepted'), {
+            newValue: value,
+          });
+          setTimeout(() => {
+            addFenToStack(value);
+          }, 10);
+        }
+
+        return originalSetAttribute(name, value);
+      };
+
+      // ADDITIONAL MONITORING: Watch for element replacement
+      const parentElement = targetFenInput.parentElement;
+      if (parentElement) {
+        const observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            if (mutation.type === 'childList') {
+              mutation.addedNodes.forEach((node) => {
+                if (
+                  node.nodeType === Node.ELEMENT_NODE &&
+                  node.matches &&
+                  node.matches('input.copyable')
+                ) {
+                  console.debug(getPrefix('data', 'FEN input element replaced detected'), {
+                    oldElement: targetFenInput,
+                    newElement: node,
+                    newValue: node.value,
+                  });
+
+                  if (node.value && typeof node.value === 'string') {
+                    setTimeout(() => {
+                      addFenToStack(node.value);
+                    }, 10);
+                  }
+                }
+              });
+            }
+          });
+        });
+
+        observer.observe(parentElement, {
+          childList: true,
+          subtree: true,
+        });
+
+        console.debug(getPrefix('data', 'Element replacement monitoring active'));
+      }
 
       // Robust verification that the override worked
       const verifyDescriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
