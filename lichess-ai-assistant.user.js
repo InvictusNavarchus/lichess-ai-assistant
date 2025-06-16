@@ -2,7 +2,7 @@
 // @name         Lichess AI Assistant
 // @namespace    http://tampermonkey.net/
 // @version      0.4.0
-// @description  AI-powered chess coach with a redesigned, modern chat interface.
+// @description  AI-powered chess coach with FEN stack context and a redesigned, modern chat interface.
 // @author       Invictus Navarchus & Gemini
 // @match        https://lichess.org/analysis*
 // @grant        GM_addStyle
@@ -14,10 +14,10 @@
 
   // --- LOGGING HELPER ---
   /**
-   * Generates a formatted prefix for console logging with timestamp and emoji.
-   * @param {string} level - The log level (info, success, warning, error)
-   * @param {string} action - The action being performed
-   * @returns {string} Formatted prefix with timestamp and emoji
+   * Generates a formatted prefix for console logging.
+   * @param {string} level - The log level (e.g., 'info', 'success', 'error')
+   * @param {string} action - The action being logged.
+   * @returns {string} A formatted string for console output.
    */
   function getPrefix(level = 'info', action = '') {
     const now = new Date();
@@ -339,6 +339,165 @@
   let mutationObserver;
   let conversationHistory = [];
 
+  // --- FEN STATE TRACKING ---
+  /**
+   * LIFO stack to track the latest 3 FEN positions.
+   * @type {Array<string>}
+   */
+  let fenStack = [];
+  let boardMutationObserver; // Observer for move list changes
+  let lastKnownFen = null;
+
+  /**
+   * Adds a FEN position to the LIFO stack, maintaining a maximum of 3 positions.
+   * @param {string} fen - The FEN string to add.
+   */
+  function addFenToStack(fen) {
+    if (!fen || fen === lastKnownFen) return;
+
+    console.log(getPrefix('chess', `Adding FEN to stack: ${fen}`));
+
+    // Remove the FEN if it already exists in the stack to avoid duplicates
+    const existingIndex = fenStack.indexOf(fen);
+    if (existingIndex !== -1) {
+      fenStack.splice(existingIndex, 1);
+    }
+
+    // Add to the end (top of LIFO stack)
+    fenStack.push(fen);
+
+    // Maintain only the latest 3 positions
+    if (fenStack.length > 3) {
+      fenStack.shift(); // Remove the oldest (first) element
+    }
+
+    lastKnownFen = fen;
+    console.log(
+      getPrefix('data', `FEN stack updated: [${fenStack.length}] ${fenStack.join(' | ')}`)
+    );
+  }
+
+  /**
+   * Gets the current FEN from the page's FEN input box.
+   * @returns {string|null} The current FEN string or null if not found.
+   */
+  function getCurrentFen() {
+    const fenInput = document.querySelector('.copyables .pair input.copyable');
+    return fenInput ? fenInput.value : null;
+  }
+
+  /**
+   * Sets up a MutationObserver to watch for move changes by monitoring the moves list.
+   * When a move is made, it captures the new FEN and adds it to the stack.
+   */
+  function setupBoardMutationObserver() {
+    console.log(getPrefix('event', 'Setting up MutationObserver for move list tracking'));
+
+    const movesContainer = document.querySelector('.analyse__moves .tview2');
+    if (!movesContainer) {
+      console.log(getPrefix('warning', 'Could not find moves container for FEN tracking'));
+      return;
+    }
+
+    const config = {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class'],
+    };
+
+    boardMutationObserver = new MutationObserver((mutationsList) => {
+      let movesChanged = false;
+
+      for (const mutation of mutationsList) {
+        // Check for changes in move elements or their classes (especially 'active' class)
+        if (mutation.type === 'attributes' && mutation.target.tagName === 'MOVE') {
+          if (mutation.attributeName === 'class') {
+            console.log(
+              getPrefix('event', `Move element class changed: ${mutation.target.className}`)
+            );
+            movesChanged = true;
+            break;
+          }
+        }
+
+        // Check for added/removed move elements
+        if (mutation.type === 'childList') {
+          for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              // Check if the node is a move element or contains move elements
+              if (node.tagName === 'MOVE' || (node.querySelector && node.querySelector('move'))) {
+                console.log(
+                  getPrefix(
+                    'event',
+                    `Move element ${mutation.addedNodes.length > 0 ? 'added' : 'removed'}`
+                  )
+                );
+                movesChanged = true;
+                break;
+              }
+            }
+          }
+          if (movesChanged) break;
+        }
+      }
+
+      if (movesChanged) {
+        console.log(getPrefix('event', 'Move list changed, checking FEN'));
+
+        // Small delay to ensure FEN is updated
+        setTimeout(() => {
+          const currentFen = getCurrentFen();
+          if (currentFen) {
+            addFenToStack(currentFen);
+          }
+        }, 50);
+      }
+    });
+
+    boardMutationObserver.observe(movesContainer, config);
+    console.log(getPrefix('success', 'Move list MutationObserver setup complete'));
+
+    // Initialize with current position
+    const initialFen = getCurrentFen();
+    if (initialFen) {
+      addFenToStack(initialFen);
+    }
+  }
+
+  /**
+   * Gets the latest FEN from the stack (most recent position).
+   * @returns {string|null} The latest FEN or null if the stack is empty.
+   */
+  function getLatestFen() {
+    return fenStack.length > 0 ? fenStack[fenStack.length - 1] : null;
+  }
+
+  /**
+   * Gets the previous FEN from the stack (the position before the last move).
+   * @returns {string|null} The previous FEN or null if not available.
+   */
+  function getPreviousFen() {
+    return fenStack.length > 1 ? fenStack[fenStack.length - 2] : null;
+  }
+
+  /**
+   * Gets all FENs in the stack from oldest to newest.
+   * @returns {Array<string>} Array of FEN strings.
+   */
+  function getAllFens() {
+    return [...fenStack];
+  }
+
+  /**
+   * Clears the FEN stack and resets the last known FEN.
+   */
+  function clearFenStack() {
+    console.log(getPrefix('data', 'Clearing FEN stack'));
+    fenStack = [];
+    lastKnownFen = null;
+  }
+
   /**
    * Adds a message to the conversation history and updates the UI.
    * @param {string} message - The message content
@@ -418,11 +577,12 @@
   }
 
   /**
-   * Builds a comprehensive system prompt with current chess context.
-   * @returns {string} The system prompt with chess position data
+   * Builds a comprehensive system prompt with current chess context, including FEN history.
+   * The previous FEN (middle in stack) is the most critical as it's the position Stockfish analyzed.
+   * @returns {string} The system prompt with chess position data.
    */
   function buildSystemPrompt() {
-    console.log(getPrefix('data', 'Building system prompt with chess context'));
+    console.log(getPrefix('data', 'Building system prompt with FEN stack context'));
 
     const chessData = extractChessData();
     if (!chessData) {
@@ -430,29 +590,52 @@
       return 'You are an AI chess coach. Help the user improve their chess skills with clear, beginner-friendly explanations.';
     }
 
-    return `You are an AI chess coach helping a beginner chess player. Here is the current game context:
+    const latestFen = getLatestFen(); // The current position after opponent's response.
+    const previousFen = getPreviousFen(); // The position that Stockfish analyzed (MOST CRITICAL).
+    const allFens = getAllFens();
 
-**CURRENT POSITION DATA:**
-- FEN: ${chessData.fen}
-- Player Side: ${chessData.playerSide}
-- Last Move Evaluation: ${chessData.feedback}
-- Stockfish Analysis: ${chessData.comment}
+    // Construct the FEN history part of the prompt.
+    // The previous FEN is the most critical as it's what Stockfish analyzed.
+    let fenContext = `- **ANALYZED FEN (Stockfish evaluated this position):** ${previousFen || 'Not available'}`;
+    if (latestFen) {
+      fenContext += `\n- **Current FEN (after opponent's response):** ${latestFen}`;
+    }
+    // Include the third FEN if it exists for more context.
+    if (allFens.length > 2) {
+      const oldestFen = allFens[allFens.length - 3];
+      fenContext += `\n- **FEN (two moves ago):** ${oldestFen}`;
+    }
 
-**GAME HISTORY (PGN):**
+    return `You are an expert AI chess coach designed to help beginner players improve. Your analysis must be clear, concise, and focused on fundamental principles.
+
+Here is the game context:
+
+---
+
+**GAME STATE:**
+- **Player to Analyze For:** ${chessData.playerSide}
+- **Lichess's Evaluation of Last Move:** "${chessData.feedback}"
+- **Lichess's Comment on Last Move:** ${chessData.comment}
+
+**POSITION HISTORY (from FEN stack):**
+This stack shows the sequence of positions leading to the current state. Use this to understand the impact of the most recent move.
+${fenContext}
+
+**FULL GAME HISTORY (PGN):**
 ${chessData.pgn}
 
-**YOUR ROLE:**
-You are a patient, knowledgeable chess coach. Provide clear, educational responses that help beginners understand chess concepts. When analyzing positions or moves:
+---
 
-1. Use simple, easy-to-understand language
-2. Explain the "why" behind chess principles
-3. Focus on fundamental concepts over complex variations
-4. When discussing tactics, explain the underlying patterns
-5. For strategic concepts, relate them to the current position
-6. If asked about alternatives, explain the trade-offs in beginner-friendly terms
-7. Always consider the player's side (${chessData.playerSide}) when giving advice
+**YOUR TASK & INSTRUCTIONS:**
+You are a patient and knowledgeable coach. Your goal is to provide educational responses that help the user understand *why* moves are good or bad.
 
-**IMPORTANT:** Base your analysis on the current position (FEN: ${chessData.fen}) and maintain context throughout our conversation. The user can ask follow-up questions, request clarifications, or discuss general chess topics.`;
+1.  **Analyze the Move:** Use the **ANALYZED FEN** as your primary reference - this is the position Stockfish evaluated and provided feedback on. Compare it with the **Current FEN** to understand the opponent's response.
+2.  **Explain in Simple Terms:** Avoid complex jargon. Focus on core concepts like piece activity, king safety, pawn structure, and control of the center.
+3.  **Focus on Fundamentals:** Prioritize explaining the *most important* strategic or tactical idea in the position. Don't overwhelm the user with too many variations.
+4.  **Be Direct:** Get straight to the point. The user is here to learn, not for conversational fluff.
+5.  **Use the Player's Perspective:** Always frame your advice from the perspective of the player whose turn it is (${chessData.playerSide}).
+
+**IMPORTANT:** Your analysis should focus on the **ANALYZED FEN** as this is the position that received Stockfish's evaluation and feedback.`;
   }
 
   /**
@@ -582,7 +765,7 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
   }
 
   /**
-   * Sets up a MutationObserver to prevent the AI Coach panel from being hidden.
+   * Sets up a MutationObserver to prevent the AI Coach panel from being hidden by Lichess scripts.
    */
   function setupMutationObserver() {
     console.log(getPrefix('event', 'Setting up MutationObserver for AI Coach panel'));
@@ -663,7 +846,6 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
       sidebar.appendChild(aiCoachPanel);
       updateChatUI(); // Initialize with welcome message
       setupChatEventListeners();
-      setupMutationObserver();
     } else {
       console.log(getPrefix('error', 'Could not find sidebar to inject AI Chat interface.'));
     }
@@ -721,7 +903,7 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
   }
 
   /**
-   * Copies the chess analysis prompt to clipboard for use with external LLMs.
+   * Copies the full AI analysis prompt to clipboard for debugging or use with external LLMs.
    */
   async function handleCopyToClipboard() {
     console.log(getPrefix('event', 'Copy to clipboard triggered'));
@@ -732,31 +914,21 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
       return;
     }
 
-    // Build the same system prompt and user message that would be sent to AI
     const systemPrompt = buildSystemPrompt();
     const userPrompt = buildPrompt(chessData);
-
-    // Combine system and user prompts
     const fullPrompt = `${systemPrompt}\n\nUser: ${userPrompt}`;
 
     try {
       await navigator.clipboard.writeText(fullPrompt);
-      console.log(getPrefix('success', 'Text copied to clipboard'));
+      console.log(getPrefix('success', 'Full prompt copied to clipboard'));
 
-      // Visual feedback - temporarily change button text
+      // Visual feedback
       const copyButton = document.getElementById('ai-copy-prompt-btn');
       if (copyButton) {
         const originalText = copyButton.innerHTML;
-        copyButton.innerHTML = `
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-          <span>Copied!</span>`;
-
+        copyButton.innerHTML = `<span>✅ Copied!</span>`;
         setTimeout(() => {
-          if (copyButton) {
-            copyButton.innerHTML = originalText;
-          }
+          copyButton.innerHTML = originalText;
         }, 2000);
       }
     } catch (err) {
@@ -809,7 +981,7 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
   }
 
   /**
-   * Constructs a detailed, beginner-focused prompt for the AI.
+   * Constructs a detailed, beginner-focused prompt for the AI based on the current move's evaluation.
    * @param {object} data - The extracted chess data.
    * @returns {string} The formatted prompt.
    */
@@ -818,49 +990,29 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     const isGoodMove = data.feedback === 'Good move';
 
     let promptSections = [
-      `I am a beginner chess player. My last move was evaluated as: **${data.feedback}**.`,
-      `Please explain this for a beginner, focusing on core principles.`,
-      `**Playing as:** ${data.playerSide}.`,
-      `**My Last Move's Analysis:** ${data.comment}`,
+      `I'm a beginner playing as **${data.playerSide}**. My last move was evaluated as: **${data.feedback}**.`,
+      `The computer's comment was: *"${data.comment}"*.`,
       `---`,
+      `Please explain this position to me simply. Focus on the core principles.`,
     ];
 
     if (isGoodMove) {
       promptSections.push(
-        `1. Why was my last move good? What fundamental principle did it follow?`
+        `1. Why was my last move good? What fundamental principle did it follow?`,
+        `2. What other good moves were available, and what was their main idea?`
       );
-      if (data.comment && data.comment.includes('Another was ')) {
-        const alternativeMove = data.comment.split('Another was ')[1];
-        promptSections.push(
-          `2. The analysis suggests "${alternativeMove}". Why is it also a good option? Compare it to my move.`
-        );
-      } else {
-        promptSections.push(
-          `2. What other good moves were available and what was their main idea?`
-        );
-      }
     } else {
       promptSections.push(
-        `1. Why was my last move a "${data.feedback}"? What tactical or positional weakness did it create?`
+        `1. Why was my last move a "${data.feedback}"? What tactical or positional weakness did it create?`,
+        `2. What would have been a better approach in this position, and what is its core idea?`
       );
-      if (
-        data.comment &&
-        (data.comment.includes('Best was ') || data.comment.includes('Better was '))
-      ) {
-        const suggestedMove = data.comment.replace(/Best was |Better was /g, '');
-        promptSections.push(
-          `2. Why is the suggested move "${suggestedMove}" better? What is its core idea?`
-        );
-      } else {
-        promptSections.push(`2. What would have been a better approach in this position?`);
-      }
     }
-    promptSections.push(`---`, `Be direct and educational. Avoid conversational fluff.`);
+
     return promptSections.join('\n');
   }
 
   /**
-   * Main handler for the "Ask AI about Position" shortcut.
+   * Main handler for the "Explain Position" shortcut.
    */
   function handleAskAIShortcut() {
     console.log(getPrefix('event', 'Ask AI shortcut triggered'));
@@ -884,29 +1036,27 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
   }
 
   // --- INITIALIZATION ---
-  window.addEventListener('load', () => {
-    console.log(getPrefix('init', 'Window loaded, starting initialization'));
-    setTimeout(setupUI, 500); // Wait for Lichess UI to be ready
+  function init() {
+    console.log(getPrefix('init', 'Lichess AI Assistant starting...'));
+    // Use a timeout to ensure Lichess's UI is fully rendered.
+    setTimeout(() => {
+      setupUI();
+      setupMutationObserver();
+      setupBoardMutationObserver();
+      console.log(getPrefix('success', 'Lichess AI Assistant initialization complete'));
+    }, 1500); // Delay to ensure all page elements are ready.
+  }
 
-    document.addEventListener('keydown', (event) => {
-      const activeEl = document.activeElement;
-      const isTyping =
-        activeEl &&
-        (activeEl.tagName === 'INPUT' ||
-          activeEl.tagName === 'TEXTAREA' ||
-          activeEl.isContentEditable);
-      if (event.code === 'Space' && !isTyping) {
-        event.preventDefault();
-        handleAskAIShortcut();
-      }
-    });
-    console.log(getPrefix('success', 'Lichess AI Assistant initialization completed'));
-  });
+  window.addEventListener('load', init);
 
   window.addEventListener('beforeunload', () => {
     if (mutationObserver) {
       mutationObserver.disconnect();
-      console.log(getPrefix('success', 'MutationObserver disconnected'));
+      console.log(getPrefix('success', 'UI MutationObserver disconnected'));
+    }
+    if (boardMutationObserver) {
+      boardMutationObserver.disconnect();
+      console.log(getPrefix('success', 'Move list MutationObserver disconnected'));
     }
   });
 })();
