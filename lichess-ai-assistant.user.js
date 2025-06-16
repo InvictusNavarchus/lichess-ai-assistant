@@ -339,6 +339,158 @@
   let mutationObserver;
   let conversationHistory = [];
 
+  // --- FEN STATE TRACKING ---
+  /**
+   * LIFO stack to track the latest 3 FEN positions
+   * @type {Array<string>}
+   */
+  let fenStack = [];
+  let boardMutationObserver;
+  let lastKnownFen = null;
+
+  /**
+   * Adds a FEN position to the LIFO stack, maintaining a maximum of 3 positions.
+   * @param {string} fen - The FEN string to add
+   */
+  function addFenToStack(fen) {
+    if (!fen || fen === lastKnownFen) return;
+
+    console.log(getPrefix('chess', `Adding FEN to stack: ${fen}`));
+
+    // Remove the FEN if it already exists in the stack to avoid duplicates
+    const existingIndex = fenStack.indexOf(fen);
+    if (existingIndex !== -1) {
+      fenStack.splice(existingIndex, 1);
+    }
+
+    // Add to the end (top of LIFO stack)
+    fenStack.push(fen);
+
+    // Maintain only the latest 3 positions
+    if (fenStack.length > 3) {
+      fenStack.shift(); // Remove the oldest (first) element
+    }
+
+    lastKnownFen = fen;
+    console.log(
+      getPrefix('data', `FEN stack updated: [${fenStack.length}] ${fenStack.join(' | ')}`)
+    );
+  }
+
+  /**
+   * Gets the current FEN from the page.
+   * @returns {string|null} The current FEN string or null if not found
+   */
+  function getCurrentFen() {
+    const fenInput = document.querySelector('.copyables .pair input.copyable');
+    return fenInput ? fenInput.value : null;
+  }
+
+  /**
+   * Sets up a MutationObserver to watch for board changes by monitoring last-move squares.
+   */
+  function setupBoardMutationObserver() {
+    console.log(getPrefix('event', 'Setting up board MutationObserver for FEN tracking'));
+
+    const boardContainer = document.querySelector('cg-board');
+    if (!boardContainer) {
+      console.log(getPrefix('error', 'Could not find cg-board for FEN tracking'));
+      return;
+    }
+
+    const config = {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['class', 'style'],
+    };
+
+    boardMutationObserver = new MutationObserver((mutationsList) => {
+      let lastMoveChanged = false;
+
+      for (const mutation of mutationsList) {
+        // Check for changes in last-move squares
+        if (
+          mutation.type === 'attributes' &&
+          mutation.target.classList &&
+          mutation.target.classList.contains('last-move')
+        ) {
+          lastMoveChanged = true;
+          break;
+        }
+
+        // Check for added/removed last-move squares
+        if (mutation.type === 'childList') {
+          for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
+            if (
+              node.nodeType === Node.ELEMENT_NODE &&
+              node.classList &&
+              node.classList.contains('last-move')
+            ) {
+              lastMoveChanged = true;
+              break;
+            }
+          }
+          if (lastMoveChanged) break;
+        }
+      }
+
+      if (lastMoveChanged) {
+        console.log(getPrefix('event', 'Last-move squares changed, checking FEN'));
+
+        // Small delay to ensure FEN is updated
+        setTimeout(() => {
+          const currentFen = getCurrentFen();
+          if (currentFen) {
+            addFenToStack(currentFen);
+          }
+        }, 50);
+      }
+    });
+
+    boardMutationObserver.observe(boardContainer, config);
+    console.log(getPrefix('success', 'Board MutationObserver setup complete'));
+
+    // Initialize with current position
+    const initialFen = getCurrentFen();
+    if (initialFen) {
+      addFenToStack(initialFen);
+    }
+  }
+
+  /**
+   * Gets the latest FEN from the stack (most recent position).
+   * @returns {string|null} The latest FEN or null if stack is empty
+   */
+  function getLatestFen() {
+    return fenStack.length > 0 ? fenStack[fenStack.length - 1] : null;
+  }
+
+  /**
+   * Gets the previous FEN from the stack (second most recent position).
+   * @returns {string|null} The previous FEN or null if not available
+   */
+  function getPreviousFen() {
+    return fenStack.length > 1 ? fenStack[fenStack.length - 2] : null;
+  }
+
+  /**
+   * Gets all FENs in the stack from oldest to newest.
+   * @returns {Array<string>} Array of FEN strings
+   */
+  function getAllFens() {
+    return [...fenStack];
+  }
+
+  /**
+   * Clears the FEN stack.
+   */
+  function clearFenStack() {
+    console.log(getPrefix('data', 'Clearing FEN stack'));
+    fenStack = [];
+    lastKnownFen = null;
+  }
+
   /**
    * Adds a message to the conversation history and updates the UI.
    * @param {string} message - The message content
@@ -664,6 +816,7 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
       updateChatUI(); // Initialize with welcome message
       setupChatEventListeners();
       setupMutationObserver();
+      setupBoardMutationObserver();
     } else {
       console.log(getPrefix('error', 'Could not find sidebar to inject AI Chat interface.'));
     }
@@ -886,7 +1039,10 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
   // --- INITIALIZATION ---
   window.addEventListener('load', () => {
     console.log(getPrefix('init', 'Window loaded, starting initialization'));
-    setTimeout(setupUI, 500); // Wait for Lichess UI to be ready
+    setTimeout(() => {
+      setupUI();
+      setupBoardMutationObserver();
+    }, 500); // Wait for Lichess UI to be ready
 
     document.addEventListener('keydown', (event) => {
       const activeEl = document.activeElement;
@@ -907,6 +1063,10 @@ You are a patient, knowledgeable chess coach. Provide clear, educational respons
     if (mutationObserver) {
       mutationObserver.disconnect();
       console.log(getPrefix('success', 'MutationObserver disconnected'));
+    }
+    if (boardMutationObserver) {
+      boardMutationObserver.disconnect();
+      console.log(getPrefix('success', 'Board MutationObserver disconnected'));
     }
   });
 })();
