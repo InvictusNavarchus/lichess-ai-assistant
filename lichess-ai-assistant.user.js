@@ -578,6 +578,7 @@
 
   /**
    * Builds a comprehensive system prompt with current chess context, including FEN history.
+   * The previous FEN (middle in stack) is the most critical as it's the position Stockfish analyzed.
    * @returns {string} The system prompt with chess position data.
    */
   function buildSystemPrompt() {
@@ -589,14 +590,15 @@
       return 'You are an AI chess coach. Help the user improve their chess skills with clear, beginner-friendly explanations.';
     }
 
-    const latestFen = getLatestFen(); // The current position after the last move.
-    const previousFen = getPreviousFen(); // The position BEFORE the last move.
+    const latestFen = getLatestFen(); // The current position after opponent's response.
+    const previousFen = getPreviousFen(); // The position that Stockfish analyzed (MOST CRITICAL).
     const allFens = getAllFens();
 
     // Construct the FEN history part of the prompt.
-    let fenContext = `- **Current FEN (after the last move):** ${latestFen || 'Not available'}`;
-    if (previousFen) {
-      fenContext += `\n- **Previous FEN (before the last move):** ${previousFen}`;
+    // The previous FEN is the most critical as it's what Stockfish analyzed.
+    let fenContext = `- **ANALYZED FEN (Stockfish evaluated this position):** ${previousFen || 'Not available'}`;
+    if (latestFen) {
+      fenContext += `\n- **Current FEN (after opponent's response):** ${latestFen}`;
     }
     // Include the third FEN if it exists for more context.
     if (allFens.length > 2) {
@@ -627,13 +629,13 @@ ${chessData.pgn}
 **YOUR TASK & INSTRUCTIONS:**
 You are a patient and knowledgeable coach. Your goal is to provide educational responses that help the user understand *why* moves are good or bad.
 
-1.  **Analyze the Move:** Use the **Current FEN** and **Previous FEN** to analyze the consequences of the last move made. Explain what changed on the board.
+1.  **Analyze the Move:** Use the **ANALYZED FEN** as your primary reference - this is the position Stockfish evaluated and provided feedback on. Compare it with the **Current FEN** to understand the opponent's response.
 2.  **Explain in Simple Terms:** Avoid complex jargon. Focus on core concepts like piece activity, king safety, pawn structure, and control of the center.
 3.  **Focus on Fundamentals:** Prioritize explaining the *most important* strategic or tactical idea in the position. Don't overwhelm the user with too many variations.
 4.  **Be Direct:** Get straight to the point. The user is here to learn, not for conversational fluff.
 5.  **Use the Player's Perspective:** Always frame your advice from the perspective of the player whose turn it is (${chessData.playerSide}).
 
-**IMPORTANT:** Your entire analysis should be based on the provided FEN history and game data. The **Current FEN** is the most critical piece of information.`;
+**IMPORTANT:** Your analysis should focus on the **ANALYZED FEN** as this is the position that received Stockfish's evaluation and feedback.`;
   }
 
   /**
