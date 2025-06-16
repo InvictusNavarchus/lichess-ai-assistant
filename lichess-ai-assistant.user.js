@@ -394,13 +394,7 @@
 
     const movesContainer = document.querySelector('.analyse__moves .tview2');
     if (!movesContainer) {
-      console.log(
-        getPrefix('warning', 'Could not find moves container for FEN tracking, will retry')
-      );
-      // Retry after a longer delay
-      setTimeout(() => {
-        setupBoardMutationObserver();
-      }, 2000);
+      console.log(getPrefix('warning', 'Could not find moves container for FEN tracking'));
       return;
     }
 
