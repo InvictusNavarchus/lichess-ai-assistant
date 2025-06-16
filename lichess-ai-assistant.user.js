@@ -312,15 +312,141 @@
       console.debug(getPrefix('error', 'Property descriptor override failed'), error);
     }
 
-    console.log(getPrefix('success', 'FEN tracking setup completed - property override approach'));
-
-    // ADDITIONAL DEEP INVESTIGATION: Monitor all possible update methods
+    console.log(getPrefix('success', 'FEN tracking setup completed - property override approach')); // ADDITIONAL DEEP INVESTIGATION: Monitor all possible update methods
     console.debug(getPrefix('data', 'Setting up comprehensive FEN monitoring'));
 
-    // Monitor direct DOM manipulation
-    const originalTextContent = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
-    const originalInnerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
-    const originalInnerText = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'innerText');
+    // Monitor ALL DOM manipulation methods that could affect input values
+    const methods = [
+      'setAttribute',
+      'setAttributeNS',
+      'removeAttribute',
+      'removeAttributeNS',
+      'setProperty',
+      'removeProperty',
+    ];
+
+    // Override setAttribute on the specific element
+    const originalSetAttribute = fenInput.setAttribute.bind(fenInput);
+    fenInput.setAttribute = function (name, value) {
+      console.debug(getPrefix('data', 'setAttribute called on FEN input'), {
+        attribute: name,
+        value: value,
+        stackTrace: new Error().stack.split('\n').slice(1, 4),
+      });
+
+      if (name === 'value' && value && typeof value === 'string') {
+        console.debug(getPrefix('data', 'FEN input setAttribute value intercepted'), {
+          newValue: value,
+        });
+        setTimeout(() => {
+          addFenToStack(value);
+        }, 10);
+      }
+
+      return originalSetAttribute(name, value);
+    };
+
+    // Monitor descriptor changes on the element itself
+    const originalDefineProperty = Object.defineProperty;
+    Object.defineProperty = function (obj, prop, descriptor) {
+      if (obj === fenInput && prop === 'value') {
+        console.debug(getPrefix('data', 'defineProperty called on FEN input value'), {
+          descriptor: descriptor,
+          stackTrace: new Error().stack.split('\n').slice(1, 4),
+        });
+      }
+      return originalDefineProperty.call(this, obj, prop, descriptor);
+    };
+
+    // Override Node.prototype methods that could change content
+    const originalAppendChild = Node.prototype.appendChild;
+    Node.prototype.appendChild = function (child) {
+      if (this === fenInput || (this.contains && this.contains(fenInput))) {
+        console.debug(getPrefix('data', 'appendChild near FEN input'), {
+          parent: this,
+          child: child,
+          stackTrace: new Error().stack.split('\n').slice(1, 3),
+        });
+      }
+      return originalAppendChild.call(this, child);
+    };
+
+    const originalReplaceChild = Node.prototype.replaceChild;
+    Node.prototype.replaceChild = function (newChild, oldChild) {
+      if (
+        this === fenInput ||
+        oldChild === fenInput ||
+        (this.contains && this.contains(fenInput))
+      ) {
+        console.debug(getPrefix('data', 'replaceChild involving FEN input'), {
+          parent: this,
+          newChild: newChild,
+          oldChild: oldChild,
+          stackTrace: new Error().stack.split('\n').slice(1, 3),
+        });
+      }
+      return originalReplaceChild.call(this, newChild, oldChild);
+    };
+
+    // Monitor direct memory/property assignment via Object.setOwnPropertyDescriptor
+    const originalSetOwnPropertyDescriptor = Object.setOwnPropertyDescriptor || function () {};
+    Object.setOwnPropertyDescriptor = function (obj, prop, descriptor) {
+      if (obj === fenInput) {
+        console.debug(getPrefix('data', 'setOwnPropertyDescriptor on FEN input'), {
+          property: prop,
+          descriptor: descriptor,
+          stackTrace: new Error().stack.split('\n').slice(1, 4),
+        });
+      }
+      return originalSetOwnPropertyDescriptor.call(this, obj, prop, descriptor);
+    };
+
+    // Monitor native browser APIs that could update form elements
+    const originalFormReset = HTMLFormElement.prototype.reset;
+    HTMLFormElement.prototype.reset = function () {
+      if (this.contains && this.contains(fenInput)) {
+        console.debug(getPrefix('data', 'Form reset affecting FEN input'), {
+          form: this,
+          stackTrace: new Error().stack.split('\n').slice(1, 3),
+        });
+      }
+      return originalFormReset.call(this);
+    };
+
+    // Monitor MutationObserver on the input itself with ALL possible options
+    const inputObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        console.debug(getPrefix('data', 'MutationObserver on FEN input detected change'), {
+          type: mutation.type,
+          target: mutation.target,
+          attributeName: mutation.attributeName,
+          oldValue: mutation.oldValue,
+          newValue: mutation.target.value,
+          stackTrace: new Error().stack.split('\n').slice(1, 3),
+        });
+
+        if (mutation.type === 'attributes' && mutation.attributeName === 'value') {
+          const newValue = mutation.target.value;
+          if (newValue && typeof newValue === 'string') {
+            setTimeout(() => {
+              addFenToStack(newValue);
+            }, 10);
+          }
+        }
+      });
+    });
+
+    inputObserver.observe(fenInput, {
+      attributes: true,
+      attributeOldValue: true,
+      attributeFilter: ['value', 'data-value'],
+      childList: true,
+      subtree: true,
+      characterData: true,
+      characterDataOldValue: true,
+    });
+
+    console.debug(getPrefix('data', 'Input-specific MutationObserver active'));
 
     // Monitor input events
     fenInput.addEventListener('input', function (e) {
@@ -362,28 +488,6 @@
         console.debug(getPrefix('warning', 'Proxy monitoring failed'), e);
       }
     }
-
-    // Periodic polling as a fallback diagnostic tool
-    let lastKnownValue = fenInput.value;
-    const pollInterval = setInterval(() => {
-      const currentValue = fenInput.value;
-      if (currentValue !== lastKnownValue) {
-        console.debug(getPrefix('data', 'POLLING detected FEN change'), {
-          oldValue: lastKnownValue,
-          newValue: currentValue,
-          timestamp: Date.now(),
-        });
-
-        if (currentValue && typeof currentValue === 'string') {
-          addFenToStack(currentValue);
-        }
-
-        lastKnownValue = currentValue;
-      }
-    }, 500); // Check every 500ms
-
-    // Store polling interval for cleanup
-    window.fenPollingInterval = pollInterval;
 
     console.debug(getPrefix('data', 'Comprehensive FEN monitoring setup complete'));
   }
@@ -1314,12 +1418,6 @@ ${
     if (mutationObserver) {
       mutationObserver.disconnect();
       console.log(getPrefix('success', 'MutationObserver disconnected'));
-    }
-
-    // Cleanup polling interval
-    if (window.fenPollingInterval) {
-      clearInterval(window.fenPollingInterval);
-      console.log(getPrefix('success', 'FEN polling interval cleared'));
     }
 
     // Restore original HTMLInputElement.prototype.value descriptor
