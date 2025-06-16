@@ -313,6 +313,79 @@
     }
 
     console.log(getPrefix('success', 'FEN tracking setup completed - property override approach'));
+
+    // ADDITIONAL DEEP INVESTIGATION: Monitor all possible update methods
+    console.debug(getPrefix('data', 'Setting up comprehensive FEN monitoring'));
+
+    // Monitor direct DOM manipulation
+    const originalTextContent = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
+    const originalInnerHTML = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+    const originalInnerText = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'innerText');
+
+    // Monitor input events
+    fenInput.addEventListener('input', function (e) {
+      console.debug(getPrefix('data', 'INPUT event on FEN input'), {
+        value: this.value,
+        event: e,
+      });
+    });
+
+    fenInput.addEventListener('change', function (e) {
+      console.debug(getPrefix('data', 'CHANGE event on FEN input'), {
+        value: this.value,
+        event: e,
+      });
+    });
+
+    // Monitor all property changes via Proxy (if supported)
+    if (typeof Proxy !== 'undefined') {
+      try {
+        const fenInputProxy = new Proxy(fenInput, {
+          set: function (target, property, value, receiver) {
+            console.debug(getPrefix('data', 'Proxy detected property set on FEN input'), {
+              property: property,
+              value: value,
+              stackTrace: new Error().stack.split('\n').slice(1, 3),
+            });
+
+            if (property === 'value' && value && typeof value === 'string') {
+              setTimeout(() => {
+                addFenToStack(value);
+              }, 10);
+            }
+
+            return Reflect.set(target, property, value, receiver);
+          },
+        });
+        console.debug(getPrefix('data', 'Proxy monitoring active'));
+      } catch (e) {
+        console.debug(getPrefix('warning', 'Proxy monitoring failed'), e);
+      }
+    }
+
+    // Periodic polling as a fallback diagnostic tool
+    let lastKnownValue = fenInput.value;
+    const pollInterval = setInterval(() => {
+      const currentValue = fenInput.value;
+      if (currentValue !== lastKnownValue) {
+        console.debug(getPrefix('data', 'POLLING detected FEN change'), {
+          oldValue: lastKnownValue,
+          newValue: currentValue,
+          timestamp: Date.now(),
+        });
+
+        if (currentValue && typeof currentValue === 'string') {
+          addFenToStack(currentValue);
+        }
+
+        lastKnownValue = currentValue;
+      }
+    }, 500); // Check every 500ms
+
+    // Store polling interval for cleanup
+    window.fenPollingInterval = pollInterval;
+
+    console.debug(getPrefix('data', 'Comprehensive FEN monitoring setup complete'));
   }
 
   /**
@@ -1241,6 +1314,12 @@ ${
     if (mutationObserver) {
       mutationObserver.disconnect();
       console.log(getPrefix('success', 'MutationObserver disconnected'));
+    }
+
+    // Cleanup polling interval
+    if (window.fenPollingInterval) {
+      clearInterval(window.fenPollingInterval);
+      console.log(getPrefix('success', 'FEN polling interval cleared'));
     }
 
     // Restore original HTMLInputElement.prototype.value descriptor
