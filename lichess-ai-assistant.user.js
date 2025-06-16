@@ -129,37 +129,47 @@
 
     // Override the value property to catch programmatic changes
     console.debug(getPrefix('data', 'Setting up property descriptor override'));
-    const originalValueSetter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      'value'
-    ).set;
-    const originalValueGetter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      'value'
-    ).get;
 
-    if (!originalValueSetter || !originalValueGetter) {
-      console.error(getPrefix('error', 'Failed to get original value descriptors'));
+    // Get original descriptor and verify it exists
+    const originalDescriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    console.debug(getPrefix('data', 'Original descriptor'), originalDescriptor);
+
+    if (!originalDescriptor || !originalDescriptor.set || !originalDescriptor.get) {
+      console.error(getPrefix('error', 'Failed to get original value descriptors'), {
+        descriptorExists: !!originalDescriptor,
+        hasSet: !!originalDescriptor?.set,
+        hasGet: !!originalDescriptor?.get,
+        descriptor: originalDescriptor,
+      });
       return;
     }
+
+    const originalValueSetter = originalDescriptor.set;
+    const originalValueGetter = originalDescriptor.get;
 
     // Store original descriptors for cleanup
     originalValueDescriptors = {
       set: originalValueSetter,
       get: originalValueGetter,
-      configurable: true,
-      enumerable: true,
+      configurable: originalDescriptor.configurable,
+      enumerable: originalDescriptor.enumerable,
     };
 
     try {
       // Store reference to our specific FEN input element
       const targetFenInput = fenInput;
 
-      // Override the prototype setter to intercept all input value changes
-      Object.defineProperty(HTMLInputElement.prototype, 'value', {
+      // Create new descriptor with our interceptor
+      const newDescriptor = {
         configurable: true,
-        enumerable: true,
+        enumerable: originalDescriptor.enumerable,
         set: function (val) {
+          console.debug(getPrefix('data', 'Custom setter called'), {
+            element: this,
+            isTarget: this === targetFenInput,
+            value: val,
+          });
+
           // Call the original setter first
           originalValueSetter.call(this, val);
 
@@ -179,15 +189,66 @@
         get: function () {
           return originalValueGetter.call(this);
         },
-      });
-      console.debug(getPrefix('success', 'Property descriptor override successful'));
+      };
 
-      // Test the override
-      console.debug(getPrefix('data', 'Testing property override'));
-      const testValue = fenInput.value;
-      if (testValue) {
-        fenInput.value = testValue; // This should trigger our setter
+      // Override the prototype setter to intercept all input value changes
+      Object.defineProperty(HTMLInputElement.prototype, 'value', newDescriptor);
+
+      // Robust verification that the override worked
+      const verifyDescriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+      console.debug(
+        getPrefix('data', 'Verification - descriptor after override'),
+        verifyDescriptor
+      );
+
+      const setterMatches = verifyDescriptor?.set === newDescriptor.set;
+      const getterMatches = verifyDescriptor?.get === newDescriptor.get;
+
+      console.debug(getPrefix('data', 'Verification results'), {
+        descriptorExists: !!verifyDescriptor,
+        setterMatches,
+        getterMatches,
+        setterIsFunction: typeof verifyDescriptor?.set === 'function',
+        getterIsFunction: typeof verifyDescriptor?.get === 'function',
+        configurable: verifyDescriptor?.configurable,
+        enumerable: verifyDescriptor?.enumerable,
+      });
+
+      if (!setterMatches || !getterMatches) {
+        console.error(getPrefix('error', 'Property descriptor override verification failed'), {
+          expectedSetter: newDescriptor.set,
+          actualSetter: verifyDescriptor?.set,
+          expectedGetter: newDescriptor.get,
+          actualGetter: verifyDescriptor?.get,
+        });
+        return;
       }
+
+      console.debug(getPrefix('success', 'Property descriptor override verified successfully'));
+
+      // Test the override with a unique marker
+      console.debug(getPrefix('data', 'Testing property override with unique marker'));
+      const testValue = fenInput.value;
+      const testMarker = testValue + '_TEST_' + Date.now();
+
+      console.debug(getPrefix('data', 'Before test assignment'), {
+        currentValue: fenInput.value,
+        testMarker,
+      });
+
+      fenInput.value = testMarker; // This should trigger our setter
+
+      setTimeout(() => {
+        console.debug(getPrefix('data', 'After test assignment'), {
+          currentValue: fenInput.value,
+          testMarker,
+        });
+
+        // Restore original value
+        if (testValue) {
+          fenInput.value = testValue;
+        }
+      }, 50);
     } catch (error) {
       console.debug(getPrefix('error', 'Property descriptor override failed'), error);
     }
